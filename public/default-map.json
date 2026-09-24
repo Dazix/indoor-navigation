@@ -18,7 +18,7 @@
     "reception": {
       "id": "reception",
       "x": 50,
-      "y": 78,
+      "y": 82,
       "label": "Reception & Lobby",
       "markerCode": "LOC-RECEPTION",
       "embeddings": []
