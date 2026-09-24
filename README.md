@@ -4,7 +4,7 @@ An indoor navigation PWA for offices with no backend at all. Floor plans, waypoi
 visual "fingerprints" of places live in the browser and can be shared as a JSON file. Hosting is free on
 GitHub Pages.
 
-**Live:** https://dazix.github.io/indoor-navigation/
+**Live:** https://vibecoding.sanda.dev/indoor-navigation/
 
 ## Features
 
