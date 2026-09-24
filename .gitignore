@@ -1,0 +1,20 @@
+node_modules
+dist
+dist-ssr
+dev-dist
+coverage
+*.local
+*.tsbuildinfo
+
+# Editors / tools
+.idea
+.vscode/*
+!.vscode/extensions.json
+.DS_Store
+
+# Logs
+npm-debug.log*
+*.log
+
+# Local browser automation output
+.playwright-mcp

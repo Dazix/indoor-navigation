@@ -1,0 +1,7 @@
+dist
+dev-dist
+coverage
+package-lock.json
+public/models
+.remember
+.playwright-mcp
