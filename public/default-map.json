@@ -1,0 +1,146 @@
+{
+  "metadata": {
+    "name": "Sample Office",
+    "version": 1,
+    "metersPerUnit": 0.3,
+    "northOffsetDeg": 0
+  },
+  "floorPlanImage": "sample-floorplan.svg",
+  "nodes": {
+    "entrance": {
+      "id": "entrance",
+      "x": 50,
+      "y": 94,
+      "label": "Main Entrance",
+      "markerCode": "LOC-ENTRANCE",
+      "embeddings": []
+    },
+    "reception": {
+      "id": "reception",
+      "x": 50,
+      "y": 78,
+      "label": "Reception & Lobby",
+      "markerCode": "LOC-RECEPTION",
+      "embeddings": []
+    },
+    "hub": {
+      "id": "hub",
+      "x": 50,
+      "y": 50,
+      "label": "Central Hub",
+      "markerCode": "LOC-HUB",
+      "embeddings": []
+    },
+    "kitchen": {
+      "id": "kitchen",
+      "x": 20,
+      "y": 50,
+      "label": "Kitchen",
+      "markerCode": "LOC-KITCHEN",
+      "embeddings": []
+    },
+    "meeting_a": {
+      "id": "meeting_a",
+      "x": 80,
+      "y": 50,
+      "label": "Meeting Room Alpha",
+      "markerCode": "LOC-MEETING-A",
+      "embeddings": []
+    },
+    "openspace": {
+      "id": "openspace",
+      "x": 50,
+      "y": 22,
+      "label": "IT Open Space",
+      "markerCode": "LOC-OPENSPACE",
+      "embeddings": []
+    },
+    "quiet_room": {
+      "id": "quiet_room",
+      "x": 18,
+      "y": 22,
+      "label": "Quiet Room",
+      "markerCode": "LOC-QUIET",
+      "embeddings": []
+    },
+    "phone": {
+      "id": "phone",
+      "x": 82,
+      "y": 22,
+      "label": "Phone Booths",
+      "markerCode": "LOC-PHONE",
+      "embeddings": []
+    }
+  },
+  "edges": [
+    ["entrance", "reception"],
+    ["reception", "hub"],
+    ["hub", "kitchen"],
+    ["hub", "meeting_a"],
+    ["hub", "openspace"],
+    ["openspace", "quiet_room"],
+    ["openspace", "phone"]
+  ],
+  "rooms": [
+    {
+      "id": "r1",
+      "x": 30,
+      "y": 70,
+      "w": 40,
+      "h": 22,
+      "label": "Reception",
+      "nodeId": "reception",
+      "color": "#e0f2fe"
+    },
+    {
+      "id": "r2",
+      "x": 6,
+      "y": 38,
+      "w": 28,
+      "h": 24,
+      "label": "Kitchen",
+      "nodeId": "kitchen",
+      "color": "#fef3c7"
+    },
+    {
+      "id": "r3",
+      "x": 66,
+      "y": 38,
+      "w": 28,
+      "h": 24,
+      "label": "Meeting A",
+      "nodeId": "meeting_a",
+      "color": "#f3e8ff"
+    },
+    {
+      "id": "r4",
+      "x": 32,
+      "y": 10,
+      "w": 36,
+      "h": 25,
+      "label": "IT Open Space",
+      "nodeId": "openspace",
+      "color": "#dcfce7"
+    },
+    {
+      "id": "r5",
+      "x": 6,
+      "y": 10,
+      "w": 24,
+      "h": 24,
+      "label": "Quiet Zone",
+      "nodeId": "quiet_room",
+      "color": "#e0e7ff"
+    },
+    {
+      "id": "r6",
+      "x": 70,
+      "y": 10,
+      "w": 24,
+      "h": 24,
+      "label": "Phone Booth",
+      "nodeId": "phone",
+      "color": "#ffedd5"
+    }
+  ]
+}
