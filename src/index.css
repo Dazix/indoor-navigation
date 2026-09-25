@@ -14,10 +14,52 @@
   --color-brand-900: #312e81;
 
   --animate-dash: dash 1.2s linear infinite;
+  --animate-route-reveal: route-reveal 1s cubic-bezier(0.33, 0, 0.2, 1) forwards;
+  --animate-route-pulse: route-pulse 2.5s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+  --animate-pin-pop: pin-pop 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) both;
 
+  /* One dash period of the route line (dash + gap), see PathOverlay. */
   @keyframes dash {
     to {
-      stroke-dashoffset: calc(-4.5 * var(--dash-scale, 1));
+      stroke-dashoffset: calc(-5.5 * var(--dash-scale, 1));
+    }
+  }
+
+  /* Draws a pathLength="1" line on from its start. */
+  @keyframes route-reveal {
+    from {
+      stroke-dashoffset: 1;
+    }
+    to {
+      stroke-dashoffset: 0;
+    }
+  }
+
+  /* Slides a short pathLength="1" dash from start to end, then rests hidden. */
+  @keyframes route-pulse {
+    0% {
+      stroke-dashoffset: 0.1;
+      opacity: 0;
+    }
+    8% {
+      opacity: 1;
+    }
+    58% {
+      opacity: 1;
+    }
+    65%,
+    100% {
+      stroke-dashoffset: -1;
+      opacity: 0;
+    }
+  }
+
+  @keyframes pin-pop {
+    from {
+      transform: scale(0);
+    }
+    to {
+      transform: scale(1);
     }
   }
 }
