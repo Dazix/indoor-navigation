@@ -9,6 +9,7 @@ import {
   longSideMeters,
   mapSize,
   metersPerUnitForLongSide,
+  metersPerUnitForSegment,
   rotateMap90,
   setEmbeddings,
   setFloorPlan,
@@ -103,6 +104,19 @@ describe('map size and aspect ratio', () => {
     const { metadata } = setMapAspect(sampleMap(), 0.5);
     expect(metersPerUnitForLongSide(metadata, 42)).toBeCloseTo(0.42);
     expect(longSideMeters({ ...metadata, metersPerUnit: 0.42 })).toBeCloseTo(42);
+  });
+
+  it('derives the scale from one measured line', () => {
+    expect(metersPerUnitForSegment({ x: 10, y: 10 }, { x: 30, y: 10 }, 5)).toBeCloseTo(0.25);
+    expect(metersPerUnitForSegment({ x: 0, y: 0 }, { x: 3, y: 4 }, 10)).toBeCloseTo(2);
+  });
+
+  it('rejects a measured line that gives no valid scale', () => {
+    const a = { x: 10, y: 10 };
+    expect(metersPerUnitForSegment(a, a, 5)).toBeNull();
+    expect(metersPerUnitForSegment(a, { x: 20, y: 10 }, 0)).toBeNull();
+    expect(metersPerUnitForSegment(a, { x: 20, y: 10 }, NaN)).toBeNull();
+    expect(metersPerUnitForSegment(a, { x: 10.5, y: 10 }, 100)).toBeNull();
   });
 });
 

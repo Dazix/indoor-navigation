@@ -2,7 +2,7 @@ import type { MapNode, Point } from './map';
 
 export type AppMode = 'user' | 'editor' | 'ar';
 
-export type EditorTool = 'select' | 'add_node' | 'link_nodes' | 'delete';
+export type EditorTool = 'select' | 'add_node' | 'link_nodes' | 'delete' | 'measure';
 
 /** Browser permission state for camera and motion sensors. */
 export type SensorPermission = 'unknown' | 'prompt' | 'granted' | 'denied' | 'unsupported';

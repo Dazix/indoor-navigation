@@ -20,6 +20,7 @@ import {
   canvasRatioForImage,
   createNodeId,
   deleteNode,
+  metersPerUnitForSegment,
   moveNode,
   rotateMap90,
   setEmbeddings,
@@ -89,6 +90,8 @@ export default function App() {
   const [tool, setTool] = useState<EditorTool>('select');
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [linkFromId, setLinkFromId] = useState<string | null>(null);
+  /** Ends of the reference line of the measure tool (0–2 points). */
+  const [measure, setMeasure] = useState<Point[]>([]);
   const [scannerOpen, setScannerOpen] = useState(false);
   const [walkthroughOpen, setWalkthroughOpen] = useState(false);
   const [managerOpen, setManagerOpen] = useState(false);
@@ -113,6 +116,7 @@ export default function App() {
     setNav({ mapId: activeMapId, from: defaultStart(map), to: null });
     setSelectedNodeId(null);
     setLinkFromId(null);
+    setMeasure([]);
   }
   const currentLocation = nav.from && map?.nodes[nav.from] ? nav.from : null;
   const destination = nav.to && map?.nodes[nav.to] ? nav.to : null;
@@ -263,12 +267,33 @@ export default function App() {
   const changeTool = (next: EditorTool) => {
     setTool(next);
     setLinkFromId(null);
+    setMeasure([]);
     if (next !== 'select') setSelectedNodeId(null);
+  };
+
+  /** Adds an end of the measured line; a third tap starts a new line. */
+  const addMeasurePoint = (point: Point) => {
+    setMeasure((m) => (m.length >= 2 ? [point] : [...m, point]));
+  };
+
+  const applyMeasuredScale = (meters: number) => {
+    const [a, b] = measure;
+    const mpu = a && b ? metersPerUnitForSegment(a, b, meters) : null;
+    if (!map || mpu === null) {
+      setNotice({ tone: 'error', text: 'Enter the real length of the measured line in metres.' });
+      return;
+    }
+    updateMap((m) => updateMetadata(m, { metersPerUnit: mpu }));
+    const { width, height } = map.metadata;
+    const size = (v: number) => String(Math.round(v * mpu * 10) / 10);
+    setNotice({ tone: 'info', text: `Scale set: the map is ${size(width)} × ${size(height)} m.` });
   };
 
   const handleCanvasTap = (point: Point) => {
     if (mode !== 'editor' || !map) return;
-    if (tool === 'add_node') {
+    if (tool === 'measure') {
+      addMeasurePoint(point);
+    } else if (tool === 'add_node') {
       const n = Object.keys(map.nodes).length + 1;
       const id = createNodeId();
       updateMap((m) => addNode(m, { id, ...point, label: `Location ${n}`, markerCode: `LOC-${n}` }));
@@ -283,7 +308,10 @@ export default function App() {
       navigateTo(id);
       return;
     }
-    if (tool === 'link_nodes') {
+    if (tool === 'measure') {
+      const node = map?.nodes[id];
+      if (node) addMeasurePoint({ x: node.x, y: node.y });
+    } else if (tool === 'link_nodes') {
       if (!linkFromId || linkFromId === id) {
         setLinkFromId(linkFromId === id ? null : id);
       } else {
@@ -473,12 +501,16 @@ export default function App() {
             onDeselect={() => {
               setSelectedNodeId(null);
             }}
+            measureLine={measure}
+            onApplyMeasure={applyMeasuredScale}
+            onClearMeasure={() => {
+              setMeasure([]);
+            }}
             mapSourceUrl={library.maps.find((m) => m.id === activeMapId)?.sourceUrl}
             onFindNode={(id) => {
               const node = map.nodes[id];
               if (!node) return;
-              setTool('select');
-              setLinkFromId(null);
+              changeTool('select');
               setSelectedNodeId(id);
               setMapFocus((f) => ({ point: { x: node.x, y: node.y }, seq: (f?.seq ?? 0) + 1 }));
             }}
@@ -518,6 +550,7 @@ export default function App() {
                 updateMap((m) => moveNode(m, id, point));
               }}
               focus={mode === 'editor' ? mapFocus : null}
+              measureLine={mode === 'editor' && tool === 'measure' ? measure : undefined}
               onBendInsert={(edgeIndex, segmentIndex, point) => {
                 updateMap((m) => insertBend(m, edgeIndex, segmentIndex, point));
               }}

@@ -9,6 +9,7 @@ import {
   type ReactNode,
 } from 'react';
 import { corridorPoints, edgeBends, nearestOnPolyline } from '../../services/corridors';
+import { distance } from '../../services/geometry';
 import { floorPlanQuarterTurns, snapToMap } from '../../services/mapEditing';
 import { resolveAssetUrl } from '../../services/mapStorage';
 import type { Route } from '../../services/navigation';
@@ -50,6 +51,8 @@ interface InteractiveMapProps {
   onBendTap?: (edgeIndex: number, bendIndex: number) => void;
   /** Centres and zooms the view on `point` whenever `seq` changes (e.g. a search result). */
   focus?: { point: Point; seq: number } | null;
+  /** Ends of the line drawn with the measure tool (0–2 points). */
+  measureLine?: Point[];
 }
 
 /** Hovered spot on a corridor where a click would add a bend. */
@@ -85,6 +88,64 @@ function toMapPoint(svg: SVGSVGElement, clientX: number, clientY: number): Point
   return { x: p.x, y: p.y };
 }
 
+/** Reference line of the measure tool: its ends and, once complete, its length at the current scale. */
+function MeasureOverlay({
+  line,
+  metersPerUnit,
+  scale: s,
+}: {
+  line: Point[];
+  metersPerUnit: number;
+  scale: number;
+}) {
+  const [a, b] = line;
+  if (!a) return null;
+  return (
+    <g pointerEvents="none">
+      {b && (
+        <>
+          <line
+            x1={a.x}
+            y1={a.y}
+            x2={b.x}
+            y2={b.y}
+            stroke="#fff"
+            strokeWidth={1.4 * s}
+            strokeLinecap="round"
+          />
+          <line
+            x1={a.x}
+            y1={a.y}
+            x2={b.x}
+            y2={b.y}
+            stroke="#d97706"
+            strokeWidth={0.7 * s}
+            strokeDasharray={`${1.6 * s} ${0.9 * s}`}
+          />
+          <text
+            x={(a.x + b.x) / 2}
+            y={(a.y + b.y) / 2 - 1.6 * s}
+            fontSize={2.2 * s}
+            textAnchor="middle"
+            className="fill-amber-700 font-bold"
+            stroke="#fff"
+            strokeWidth={0.6 * s}
+            paintOrder="stroke"
+          >
+            {(distance(a, b) * metersPerUnit).toFixed(2)} m
+          </text>
+        </>
+      )}
+      {[a, b].map(
+        (p, i) =>
+          p && (
+            <circle key={i} cx={p.x} cy={p.y} r={1 * s} fill="#fff" stroke="#d97706" strokeWidth={0.5 * s} />
+          ),
+      )}
+    </g>
+  );
+}
+
 function gridLines(max: number): number[] {
   const lines: number[] = [];
   for (let c = GRID_STEP; c < max; c += GRID_STEP) lines.push(c);
@@ -113,6 +174,7 @@ export function InteractiveMap({
   onEdgeTap,
   onBendTap,
   focus,
+  measureLine,
 }: InteractiveMapProps) {
   const svgRef = useRef<SVGSVGElement>(null);
   const gesture = useRef<Gesture | null>(null);
@@ -398,7 +460,7 @@ export function InteractiveMap({
             width: `min(100cqw, calc(100cqh * ${width / height}))`,
           }}
           className={`touch-none rounded-2xl border border-slate-300/80 bg-white shadow-inner dark:border-slate-700 dark:bg-slate-900 ${
-            isEditor && tool === 'add_node' ? 'cursor-crosshair' : ''
+            isEditor && (tool === 'add_node' || tool === 'measure') ? 'cursor-crosshair' : ''
           }`}
           onClick={handleCanvasClick}
           onPointerDown={onPointerDown}
@@ -663,6 +725,10 @@ export function InteractiveMap({
               <circle r={2.2} fill="#2563eb" stroke="#fff" strokeWidth={0.6} />
               <circle r={0.8} fill="#fff" />
             </g>
+          )}
+
+          {measureLine && measureLine.length > 0 && (
+            <MeasureOverlay line={measureLine} metersPerUnit={metadata.metersPerUnit} scale={s} />
           )}
         </svg>
       </div>
