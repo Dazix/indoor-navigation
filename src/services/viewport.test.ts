@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { clampView, fitView, snapStep, viewBoxOf, zoomAround } from './viewport';
+import { clampView, fitView, markerBaseScale, snapStep, viewBoxOf, zoomAround } from './viewport';
 
 const size = { width: 100, height: 50 };
 
@@ -19,6 +19,12 @@ describe('map viewport', () => {
     expect(view).toEqual({ zoom: 2, cx: 50, cy: 25 });
     const corner = zoomAround(fitView(size), 4, { x: 0, y: 0 }, size);
     expect(viewBoxOf(corner, size)).toEqual({ x: 0, y: 0, w: 25, h: 12.5 });
+  });
+
+  it('keeps marker size on a phone-width map and shrinks it on a large one', () => {
+    expect(markerBaseScale(360, 100)).toBe(1);
+    expect(markerBaseScale(1000, 100)).toBe(0.5);
+    expect(markerBaseScale(0, 100)).toBe(1);
   });
 
   it('uses a finer snap when zoomed in', () => {

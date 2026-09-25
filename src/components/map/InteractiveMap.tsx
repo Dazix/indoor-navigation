@@ -16,6 +16,7 @@ import {
   clampView,
   fitView,
   MAX_ZOOM,
+  markerBaseScale,
   MIN_ZOOM,
   snapStep,
   viewBoxOf,
@@ -110,8 +111,22 @@ export function InteractiveMap({
   }, [view]);
 
   const vb = viewBoxOf(view, size);
+  // The <svg> box keeps the map's aspect ratio, so its pixel width gives the on-screen map scale.
+  const [baseScale, setBaseScale] = useState(1);
+  useEffect(() => {
+    const svg = svgRef.current;
+    if (!svg) return;
+    const observer = new ResizeObserver(() => {
+      setBaseScale(markerBaseScale(svg.getBoundingClientRect().width, width));
+    });
+    observer.observe(svg);
+    return () => {
+      observer.disconnect();
+    };
+  }, [width]);
+
   /** Marker scale: nodes, labels and the route keep their on-screen size while zooming. */
-  const s = 1 / view.zoom;
+  const s = baseScale / view.zoom;
 
   const userPoint: Point | null =
     route?.progress.position ?? (currentLocation && nodes[currentLocation] ? nodes[currentLocation] : null);

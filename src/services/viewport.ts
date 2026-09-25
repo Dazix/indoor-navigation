@@ -18,6 +18,18 @@ export interface ViewBox {
 export const MIN_ZOOM = 1;
 export const MAX_ZOOM = 8;
 
+/**
+ * Screen pixels per map unit up to which markers keep their designed size. A phone-width map stays
+ * below it; a large desktop map would blow nodes and routes up, so they are shrunk back to it.
+ */
+const MARKER_MAX_PX_PER_UNIT = 5;
+
+/** Marker size multiplier at 1× zoom for a map drawn `widthPx` wide on screen. */
+export function markerBaseScale(widthPx: number, mapWidth: number): number {
+  const pxPerUnit = widthPx / mapWidth;
+  return pxPerUnit > MARKER_MAX_PX_PER_UNIT ? MARKER_MAX_PX_PER_UNIT / pxPerUnit : 1;
+}
+
 export function fitView(size: MapSize): MapView {
   return { zoom: 1, cx: size.width / 2, cy: size.height / 2 };
 }
