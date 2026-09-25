@@ -8,6 +8,7 @@ import {
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from 'react';
+import { corridorPoints, edgeBends, nearestOnPolyline } from '../../services/corridors';
 import { floorPlanQuarterTurns, snapToMap } from '../../services/mapEditing';
 import { resolveAssetUrl } from '../../services/mapStorage';
 import type { Route } from '../../services/navigation';
@@ -41,6 +42,21 @@ interface InteractiveMapProps {
   onRoomTap: (nodeId: string) => void;
   onCanvasTap: (point: Point) => void;
   onNodeDrag: (id: string, point: Point) => void;
+  /** Adds a bend into segment `segmentIndex` of corridor `edgeIndex` (select tool). */
+  onBendInsert?: (edgeIndex: number, segmentIndex: number, point: Point) => void;
+  onBendDrag?: (edgeIndex: number, bendIndex: number, point: Point) => void;
+  /** Corridor / bend tapped with the delete tool. */
+  onEdgeTap?: (edgeIndex: number) => void;
+  onBendTap?: (edgeIndex: number, bendIndex: number) => void;
+  /** Centres and zooms the view on `point` whenever `seq` changes (e.g. a search result). */
+  focus?: { point: Point; seq: number } | null;
+}
+
+/** Hovered spot on a corridor where a click would add a bend. */
+interface BendPreview {
+  edgeIndex: number;
+  segmentIndex: number;
+  point: Point;
 }
 
 const GRID_STEP = 20;
@@ -49,9 +65,14 @@ const DRAG_THRESHOLD = 1.2;
 /** Screen distance a pan has to travel before it stops being a tap. */
 const PAN_THRESHOLD_PX = 5;
 const BUTTON_ZOOM_STEP = 1.5;
+/** Zoom a focused location (search result) is shown at, unless the view is already closer. */
+const FOCUS_ZOOM = 3;
 
 type Gesture =
   | { kind: 'node'; id: string; start: Point; moved: boolean }
+  | { kind: 'bend'; edgeIndex: number; bendIndex: number; start: Point; moved: boolean }
+  /** Pressed on a corridor: a release adds a bend there, a drag adds one and moves it. */
+  | { kind: 'corridor'; preview: BendPreview; start: Point }
   | { kind: 'pan'; pointerId: number; startX: number; startY: number; startView: MapView; moved: boolean }
   | { kind: 'pinch'; startDist: number; startMid: Point; startView: MapView }
   /** A pinch lost a finger: ignore the rest until every pointer is up. */
@@ -87,16 +108,25 @@ export function InteractiveMap({
   onRoomTap,
   onCanvasTap,
   onNodeDrag,
+  onBendInsert,
+  onBendDrag,
+  onEdgeTap,
+  onBendTap,
+  focus,
 }: InteractiveMapProps) {
   const svgRef = useRef<SVGSVGElement>(null);
   const gesture = useRef<Gesture | null>(null);
   const pointers = useRef(new Map<number, { x: number; y: number }>());
   const suppressClick = useRef(false);
   const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [draggingBend, setDraggingBend] = useState(false);
+  const [bendPreview, setBendPreview] = useState<BendPreview | null>(null);
   const { nodes, edges, rooms, floorPlanImage, metadata } = map;
   const { width, height, floorPlanRotationDeg } = metadata;
   const size = { width, height };
   const canDrag = isEditor && tool === 'select';
+  /** Corridors and bends react to the pointer only with the tools that edit them. */
+  const corridorsInteractive = isEditor && (tool === 'select' || tool === 'delete');
 
   const [view, setView] = useState<MapView>(() => fitView(size));
   // A new canvas size (aspect change, rotation) starts from the whole map again.
@@ -104,6 +134,11 @@ export function InteractiveMap({
   if (viewSize !== `${width}×${height}`) {
     setViewSize(`${width}×${height}`);
     setView(fitView(size));
+  }
+  const [focusSeq, setFocusSeq] = useState(focus?.seq);
+  if (focus && focus.seq !== focusSeq) {
+    setFocusSeq(focus.seq);
+    setView(clampView({ zoom: Math.max(view.zoom, FOCUS_ZOOM), cx: focus.point.x, cy: focus.point.y }, size));
   }
   const viewRef = useRef(view);
   useLayoutEffect(() => {
@@ -172,6 +207,18 @@ export function InteractiveMap({
     return { dist: Math.hypot(a.x - b.x, a.y - b.y), mid: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 } };
   };
 
+  /** Corridor under the pointer and the snapped spot on it where a bend would go. */
+  const corridorAt = (target: EventTarget, svg: SVGSVGElement, clientX: number, clientY: number) => {
+    const attr = (target as Element)
+      .closest('[data-edge-index]:not([data-bend-index])')
+      ?.getAttribute('data-edge-index');
+    const edgeIndex = attr == null ? -1 : Number(attr);
+    const edge = edges[edgeIndex];
+    if (!edge) return null;
+    const hit = nearestOnPolyline(corridorPoints(nodes, edge), toMapPoint(svg, clientX, clientY));
+    return hit ? { edgeIndex, segmentIndex: hit.segmentIndex, point: snap(hit.point) } : null;
+  };
+
   const onPointerDown = (e: ReactPointerEvent<SVGSVGElement>) => {
     const svg = svgRef.current;
     if (!svg) return;
@@ -182,6 +229,7 @@ export function InteractiveMap({
       const pinch = pinchState();
       if (!pinch) return;
       if (gesture.current?.kind === 'node') setDraggingId(null);
+      setDraggingBend(false);
       for (const id of pointers.current.keys()) {
         if (!svg.hasPointerCapture(id)) svg.setPointerCapture(id);
       }
@@ -195,8 +243,12 @@ export function InteractiveMap({
     }
     if (pointers.current.size > 2) return;
 
-    const nodeId = (e.target as Element).closest('[data-node-id]')?.getAttribute('data-node-id');
+    const target = e.target as Element;
+    const nodeId = target.closest('[data-node-id]')?.getAttribute('data-node-id');
+    const bendEl = target.closest('[data-bend-index]');
+    const corridor = canDrag && !nodeId && !bendEl ? corridorAt(target, svg, e.clientX, e.clientY) : null;
     if (e.button === 1) e.preventDefault(); // no auto-scroll on middle click
+    setBendPreview(null);
     if (canDrag && nodeId && e.button === 0) {
       svg.setPointerCapture(e.pointerId);
       gesture.current = {
@@ -205,6 +257,18 @@ export function InteractiveMap({
         start: toMapPoint(svg, e.clientX, e.clientY),
         moved: false,
       };
+    } else if (canDrag && bendEl && e.button === 0) {
+      svg.setPointerCapture(e.pointerId);
+      gesture.current = {
+        kind: 'bend',
+        edgeIndex: Number(bendEl.getAttribute('data-edge-index')),
+        bendIndex: Number(bendEl.getAttribute('data-bend-index')),
+        start: toMapPoint(svg, e.clientX, e.clientY),
+        moved: false,
+      };
+    } else if (corridor && e.button === 0) {
+      svg.setPointerCapture(e.pointerId);
+      gesture.current = { kind: 'corridor', preview: corridor, start: toMapPoint(svg, e.clientX, e.clientY) };
     } else if (e.button === 0 || e.button === 1) {
       gesture.current = {
         kind: 'pan',
@@ -220,6 +284,17 @@ export function InteractiveMap({
   const onPointerMove = (e: ReactPointerEvent<SVGSVGElement>) => {
     const svg = svgRef.current;
     const g = gesture.current;
+    if (svg && !g && e.pointerType === 'mouse') {
+      // Hovering a corridor previews where a click adds a bend.
+      const preview = canDrag ? corridorAt(e.target, svg, e.clientX, e.clientY) : null;
+      setBendPreview((prev) =>
+        prev?.edgeIndex === preview?.edgeIndex &&
+        prev?.point.x === preview?.point.x &&
+        prev?.point.y === preview?.point.y
+          ? prev
+          : preview,
+      );
+    }
     if (!svg || !g || !pointers.current.has(e.pointerId)) return;
     pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
     const rect = svg.getBoundingClientRect();
@@ -260,6 +335,20 @@ export function InteractiveMap({
       if (!g.moved) setDraggingId(g.id);
       g.moved = true;
       onNodeDrag(g.id, snap(p));
+    } else if (g.kind === 'corridor') {
+      const p = toMapPoint(svg, e.clientX, e.clientY);
+      if (Math.hypot(p.x - g.start.x, p.y - g.start.y) < DRAG_THRESHOLD * s) return;
+      // Dragging off a corridor creates the bend and keeps dragging it.
+      const { edgeIndex, segmentIndex } = g.preview;
+      onBendInsert?.(edgeIndex, segmentIndex, snap(p));
+      gesture.current = { kind: 'bend', edgeIndex, bendIndex: segmentIndex, start: g.start, moved: true };
+      setDraggingBend(true);
+    } else if (g.kind === 'bend') {
+      const p = toMapPoint(svg, e.clientX, e.clientY);
+      if (!g.moved && Math.hypot(p.x - g.start.x, p.y - g.start.y) < DRAG_THRESHOLD * s) return;
+      if (!g.moved) setDraggingBend(true);
+      g.moved = true;
+      onBendDrag?.(g.edgeIndex, g.bendIndex, snap(p));
     }
   };
 
@@ -275,6 +364,14 @@ export function InteractiveMap({
       suppressClick.current = true;
       setDraggingId(null);
       if (!g.moved) onNodeTap(g.id);
+    } else if (g.kind === 'corridor') {
+      gesture.current = null;
+      suppressClick.current = true;
+      onBendInsert?.(g.preview.edgeIndex, g.preview.segmentIndex, g.preview.point);
+    } else if (g.kind === 'bend') {
+      gesture.current = null;
+      suppressClick.current = true;
+      setDraggingBend(false);
     } else if (g.kind === 'pan') {
       gesture.current = null;
       if (g.moved) suppressClick.current = true;
@@ -308,6 +405,9 @@ export function InteractiveMap({
           onPointerMove={onPointerMove}
           onPointerUp={onPointerEnd}
           onPointerCancel={onPointerEnd}
+          onPointerLeave={() => {
+            setBendPreview(null);
+          }}
           onAuxClick={(e) => {
             e.preventDefault();
           }}
@@ -376,24 +476,99 @@ export function InteractiveMap({
             );
           })}
 
-          {edges.map(([u, v]) => {
-            const a = nodes[u];
-            const b = nodes[v];
-            if (!a || !b) return null;
+          {edges.map((edge, edgeIndex) => {
+            const points = corridorPoints(nodes, edge);
+            if (points.length === 0) return null;
+            const line = points.map((p) => `${p.x},${p.y}`).join(' ');
             return (
-              <line
-                key={`${u}-${v}`}
-                x1={a.x}
-                y1={a.y}
-                x2={b.x}
-                y2={b.y}
-                className={isEditor ? 'stroke-slate-400' : 'stroke-slate-300 dark:stroke-slate-600'}
-                strokeWidth={(isEditor ? 1.3 : 1) * s}
-                strokeDasharray={isEditor ? `${1.5 * s} ${1.5 * s}` : undefined}
-                strokeLinecap="round"
-              />
+              <g key={`${edge[0]}-${edge[1]}`} className="group">
+                <polyline
+                  points={line}
+                  fill="none"
+                  className={
+                    isEditor
+                      ? `stroke-slate-400 ${tool === 'delete' ? 'group-hover:stroke-red-500' : ''}`
+                      : 'stroke-slate-300 dark:stroke-slate-600'
+                  }
+                  strokeWidth={(isEditor ? 1.3 : 1) * s}
+                  strokeDasharray={isEditor ? `${1.5 * s} ${1.5 * s}` : undefined}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+                {corridorsInteractive && (
+                  // Invisible wide stroke that catches hovers, clicks and taps on the corridor.
+                  <polyline
+                    points={line}
+                    fill="none"
+                    stroke="transparent"
+                    strokeWidth={3.5 * s}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    pointerEvents="stroke"
+                    role="button"
+                    aria-label={tool === 'delete' ? 'Delete corridor' : 'Add bend point'}
+                    data-edge-index={edgeIndex}
+                    className={tool === 'delete' ? 'cursor-pointer' : 'cursor-copy'}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (tool === 'delete') onEdgeTap?.(edgeIndex);
+                    }}
+                  />
+                )}
+              </g>
             );
           })}
+
+          {isEditor &&
+            edges.map((edge, edgeIndex) =>
+              edgeBends(edge).map((p, bendIndex) => (
+                <g
+                  key={`${edge[0]}-${edge[1]}-${bendIndex}`}
+                  role="button"
+                  aria-label="Bend point"
+                  data-edge-index={edgeIndex}
+                  data-bend-index={bendIndex}
+                  pointerEvents={corridorsInteractive ? undefined : 'none'}
+                  className={`group ${
+                    tool === 'delete'
+                      ? 'cursor-pointer'
+                      : canDrag
+                        ? draggingBend
+                          ? 'cursor-grabbing'
+                          : 'cursor-grab'
+                        : ''
+                  }`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (tool === 'delete') onBendTap?.(edgeIndex, bendIndex);
+                  }}
+                >
+                  <circle cx={p.x} cy={p.y} r={3 * s} fill="transparent" />
+                  <rect
+                    x={p.x - 0.9 * s}
+                    y={p.y - 0.9 * s}
+                    width={1.8 * s}
+                    height={1.8 * s}
+                    transform={`rotate(45 ${p.x} ${p.y})`}
+                    className={`fill-white stroke-slate-500 ${
+                      tool === 'delete' ? 'group-hover:stroke-red-500' : 'group-hover:stroke-brand-600'
+                    }`}
+                    strokeWidth={0.5 * s}
+                  />
+                </g>
+              )),
+            )}
+
+          {canDrag && bendPreview && (
+            <circle
+              cx={bendPreview.point.x}
+              cy={bendPreview.point.y}
+              r={1.2 * s}
+              className="fill-brand-500/50 stroke-white"
+              strokeWidth={0.4 * s}
+              pointerEvents="none"
+            />
+          )}
 
           {route && <PathOverlay route={route} scale={s} />}
 

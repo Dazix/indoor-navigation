@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createBlankMap } from './mapLibrary';
 import {
+  buildNodeLink,
   buildShareLink,
   fetchSharedMap,
   inlineFloorPlan,
@@ -43,6 +44,13 @@ describe('map sharing', () => {
     const link = buildShareLink('https://example.com/a map.json', `${BASE}?map=old#x`);
     expect(link).toBe(`${BASE}?map=https%3A%2F%2Fexample.com%2Fa+map.json`);
     expect(new URL(link).searchParams.get('map')).toBe('https://example.com/a map.json');
+  });
+
+  it('builds a location link, with the map when it has a share URL', () => {
+    expect(buildNodeLink(`${BASE}?map=old#editor`, 'node_1')).toBe(`${BASE}?to=node_1`);
+    const link = new URL(buildNodeLink(BASE, 'hub', 'https://example.com/m.json'));
+    expect(link.searchParams.get('map')).toBe('https://example.com/m.json');
+    expect(link.searchParams.get('to')).toBe('hub');
   });
 
   it('embeds a referenced floor plan as a data URL', async () => {

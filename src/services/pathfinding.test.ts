@@ -56,6 +56,17 @@ describe('findShortestPath', () => {
     expect(findShortestPath('a', 'c', withStops, routes)).toEqual(['a', 'x1', 'b', 'x2', 'c']);
   });
 
+  it('weights corridors by their length through bend points', () => {
+    // a-b-c is 20 units straight; a detour bend on b-c makes a-d-c (~102) shorter.
+    const bent: Edge[] = [['a', 'b'], ['b', 'c', [{ x: 15, y: 90 }]], ...edges.slice(2)];
+    expect(
+      buildGraph(nodes, bent)
+        .get('b')
+        ?.find((n) => n.id === 'c')?.cost,
+    ).toBeCloseTo(2 * Math.hypot(5, 90));
+    expect(findShortestPath('a', 'c', nodes, bent)).toEqual(['a', 'd', 'c']);
+  });
+
   it('returns an empty path when the target is unreachable', () => {
     expect(findShortestPath('a', 'island', nodes, edges)).toEqual([]);
   });

@@ -3,14 +3,17 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type
 import { EditorSidebar } from './components/editor/EditorSidebar';
 import { Header } from './components/layout/Header';
 import { InteractiveMap } from './components/map/InteractiveMap';
+import { LocationSearch } from './components/map/LocationSearch';
 import { MapManagerModal, ShareLinkSection } from './components/maps/MapManagerModal';
 import { Modal } from './components/ui/Modal';
 import { NavigationBar } from './components/ui/NavigationBar';
 import { useMapLibrary } from './hooks/useMapLibrary';
+import { readMap } from './services/mapLibrary';
 import { useOrientation } from './hooks/useOrientation';
 import { usePDR } from './hooks/usePDR';
 import { useTensorFlow } from './hooks/useTensorFlow';
 import { normalizeDeg } from './services/geometry';
+import { deleteBend, deleteEdge, insertBend, moveBend } from './services/corridors';
 import { imageRatio, pickImageFile, readClipboardImage, readFloorPlanFile } from './services/imageFiles';
 import {
   addNode,
@@ -33,6 +36,7 @@ import {
   MAP_URL_PARAM,
   resolveMapUrl,
   shareMap,
+  TO_URL_PARAM,
 } from './services/mapSharing';
 import { importMapFromFile, resolveAssetUrl } from './services/mapStorage';
 import { computeRoute, formatDistance } from './services/navigation';
@@ -52,18 +56,21 @@ function defaultStart(map: MapData): string | null {
   return 'entrance' in map.nodes ? 'entrance' : (Object.keys(map.nodes)[0] ?? null);
 }
 
-/** Reads the `?map=` share link parameter once and removes it, so a reload does not import again. */
-function takeMapLinkParam(): string | null {
+/** Reads a link parameter once and removes it, so a reload does not act on it again. */
+function takeUrlParam(name: string): string | null {
   const url = new URL(window.location.href);
-  const value = url.searchParams.get(MAP_URL_PARAM);
+  const value = url.searchParams.get(name);
   if (value === null) return null;
-  url.searchParams.delete(MAP_URL_PARAM);
+  url.searchParams.delete(name);
   window.history.replaceState(window.history.state, '', url.href);
   return value;
 }
 
-// Read at module load, before the first render, so StrictMode double renders cannot lose it.
-const INITIAL_MAP_LINK = takeMapLinkParam();
+// Read at module load, before the first render, so StrictMode double renders cannot lose them.
+/** `?map=` share link: map JSON to import. */
+const INITIAL_MAP_LINK = takeUrlParam(MAP_URL_PARAM);
+/** `?to=` location link: node to navigate to once the map is loaded. */
+const INITIAL_TARGET = takeUrlParam(TO_URL_PARAM);
 
 function FullScreenMessage({ children }: { children: ReactNode }) {
   return (
@@ -88,7 +95,13 @@ export default function App() {
   const [shareLinkOpen, setShareLinkOpen] = useState(false);
   const [notice, setNotice] = useState<Notice | null>(null);
   const [p2pRole, setP2PRole] = useState<P2PRole | null>(null);
+  /** Map spot to zoom to (editor search); `seq` makes a repeated pick of the same spot count. */
+  const [mapFocus, setMapFocus] = useState<{ point: Point; seq: number } | null>(null);
   const mapLinkHandled = useRef(false);
+  // A location link (?to=) waits until a ?map= link has been imported, so it can target that map.
+  const [mapLinkDone, setMapLinkDone] = useState(INITIAL_MAP_LINK === null);
+  const pendingTarget = useRef(INITIAL_TARGET);
+  const targetSearched = useRef(false);
 
   // Location and destination belong to one map; reset them when another map becomes active.
   const [nav, setNav] = useState<{ mapId: string | null; from: string | null; to: string | null }>({
@@ -183,7 +196,9 @@ export default function App() {
           text: `Map link failed: ${err instanceof Error ? err.message : String(err)}`,
         });
       }
-    })();
+    })().finally(() => {
+      setMapLinkDone(true);
+    });
   }, [libraryStatus, findBySource, importFromUrl]);
 
   const { reset: resetSteps } = pdr;
@@ -191,7 +206,7 @@ export default function App() {
   /** Starts a new leg from the last waypoint the user walked past. */
   const navigateTo = useCallback(
     (to: string | null) => {
-      const passed = route ? route.path[Math.max(0, route.progress.nextIndex - 1)] : undefined;
+      const passed = route ? route.path[Math.max(0, route.nextNodeIndex - 1)] : undefined;
       setNav((n) => ({ ...n, from: passed ?? n.from, to }));
       resetSteps();
     },
@@ -205,6 +220,38 @@ export default function App() {
     },
     [resetSteps],
   );
+
+  // Location link (?to=<node id>): navigate there on the active map, or on the library map that has it.
+  const { maps: libraryMaps, switchMap } = library;
+  useEffect(() => {
+    const target = pendingTarget.current;
+    if (!target || !mapLinkDone || libraryStatus !== 'ready' || !map) return;
+    const notFound = () => {
+      pendingTarget.current = null;
+      setNotice({ tone: 'error', text: 'The location from the link was not found in your maps.' });
+    };
+    if (target in map.nodes) {
+      pendingTarget.current = null;
+      navigateTo(target);
+      return;
+    }
+    if (targetSearched.current) {
+      notFound();
+      return;
+    }
+    targetSearched.current = true;
+    void (async () => {
+      for (const summary of libraryMaps) {
+        if (summary.id === activeMapId) continue;
+        const data = await readMap(summary.id);
+        if (data && target in data.nodes) {
+          await switchMap(summary.id); // this effect runs again with that map and navigates
+          return;
+        }
+      }
+      notFound();
+    })();
+  }, [map, activeMapId, libraryMaps, libraryStatus, mapLinkDone, navigateTo, switchMap]);
 
   const enableSensors = () => {
     // Both prompts must start synchronously inside the tap handler for iOS to show them.
@@ -426,6 +473,15 @@ export default function App() {
             onDeselect={() => {
               setSelectedNodeId(null);
             }}
+            mapSourceUrl={library.maps.find((m) => m.id === activeMapId)?.sourceUrl}
+            onFindNode={(id) => {
+              const node = map.nodes[id];
+              if (!node) return;
+              setTool('select');
+              setLinkFromId(null);
+              setSelectedNodeId(id);
+              setMapFocus((f) => ({ point: { x: node.x, y: node.y }, seq: (f?.seq ?? 0) + 1 }));
+            }}
           />
         )}
 
@@ -460,6 +516,19 @@ export default function App() {
               onCanvasTap={handleCanvasTap}
               onNodeDrag={(id, point) => {
                 updateMap((m) => moveNode(m, id, point));
+              }}
+              focus={mode === 'editor' ? mapFocus : null}
+              onBendInsert={(edgeIndex, segmentIndex, point) => {
+                updateMap((m) => insertBend(m, edgeIndex, segmentIndex, point));
+              }}
+              onBendDrag={(edgeIndex, bendIndex, point) => {
+                updateMap((m) => moveBend(m, edgeIndex, bendIndex, point));
+              }}
+              onEdgeTap={(edgeIndex) => {
+                updateMap((m) => deleteEdge(m, edgeIndex));
+              }}
+              onBendTap={(edgeIndex, bendIndex) => {
+                updateMap((m) => deleteBend(m, edgeIndex, bendIndex));
               }}
             />
           )}
@@ -499,9 +568,12 @@ export default function App() {
           )}
 
           {mode === 'user' && !destinationNode && Object.keys(map.nodes).length > 0 && (
-            <p className="pointer-events-none absolute inset-x-3 top-3 z-10 mx-auto max-w-md rounded-2xl bg-white/90 p-3 text-center text-xs font-medium text-slate-600 shadow-lg dark:bg-slate-900/90 dark:text-slate-300">
-              Tap a room or location to navigate there.
-            </p>
+            <div className="absolute inset-x-3 top-3 z-10 mx-auto max-w-md rounded-2xl bg-white/90 p-2 shadow-lg backdrop-blur-md dark:bg-slate-900/90">
+              <LocationSearch map={map} placeholder="Where do you want to go?" onPick={navigateTo} />
+              <p className="mt-1.5 text-center text-[11px] font-medium text-slate-500 dark:text-slate-400">
+                Or tap a room or location on the map.
+              </p>
+            </div>
           )}
 
           {mode === 'user' && Object.keys(map.nodes).length === 0 && (

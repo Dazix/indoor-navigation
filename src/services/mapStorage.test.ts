@@ -60,6 +60,19 @@ describe('parseMapData', () => {
     expect(errorOf(broken)).toContain('ghost');
   });
 
+  it('accepts corridor bends and rejects bends outside the map', () => {
+    const map = clone();
+    const edges = map.edges as unknown[][];
+    const [u, v] = edges[0] as string[];
+    edges[0] = [u, v, [{ x: 20, y: 5 }]];
+    const result = parseMapData(map);
+    expect(result.ok && result.data.edges[0]).toEqual([u, v, [{ x: 20, y: 5 }]]);
+
+    map.metadata = { ...(map.metadata as object), width: 100, height: 100 };
+    edges[0] = [u, v, [{ x: 20, y: 120 }]];
+    expect(errorOf(map)).toContain('edges.0');
+  });
+
   it('rejects coordinates outside the 0–100 map space', () => {
     const broken = clone();
     const nodes = broken.nodes as Record<string, Record<string, unknown>>;

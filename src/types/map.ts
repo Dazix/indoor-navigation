@@ -16,8 +16,11 @@ export interface MapNode extends Point {
   fingerprint?: number[];
 }
 
-/** Undirected walkable corridor between two node ids. */
-export type Edge = [string, string];
+/**
+ * Undirected walkable corridor between two node ids. The optional third element holds bend
+ * points (corners without a name or marker), ordered from the first node to the second.
+ */
+export type Edge = [string, string] | [string, string, Point[]];
 
 export interface Room {
   id: string;

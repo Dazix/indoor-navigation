@@ -1,16 +1,21 @@
 import type { Edge, MapNode } from '../types/map';
-import { distance } from './geometry';
+import { corridorPoints } from './corridors';
+import { distance, pathLength } from './geometry';
 
 export type Graph = Map<string, { id: string; cost: number }[]>;
 
-/** Builds an undirected adjacency list weighted by corridor length. Edges to missing nodes are skipped. */
+/**
+ * Builds an undirected adjacency list weighted by corridor length (through its bend points).
+ * Edges to missing nodes are skipped.
+ */
 export function buildGraph(nodes: Record<string, MapNode>, edges: readonly Edge[]): Graph {
   const graph: Graph = new Map();
-  for (const [u, v] of edges) {
+  for (const edge of edges) {
+    const [u, v] = edge;
     const a = nodes[u];
     const b = nodes[v];
     if (!a || !b || u === v) continue;
-    const cost = distance(a, b);
+    const cost = pathLength(corridorPoints(nodes, edge));
     if (!graph.has(u)) graph.set(u, []);
     if (!graph.has(v)) graph.set(v, []);
     graph.get(u)?.push({ id: v, cost });

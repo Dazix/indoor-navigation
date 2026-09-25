@@ -3,6 +3,8 @@ import { MAX_IMPORT_BYTES, parseMapData, resolveAssetUrl, type ParseResult } fro
 
 /** Query parameter that makes the app load a map from a URL on startup. */
 export const MAP_URL_PARAM = 'map';
+/** Location link parameter: `?to=<node id>` starts navigation to that location. */
+export const TO_URL_PARAM = 'to';
 
 /** File picker filter for map imports; .txt covers maps shared from Android (see shareCandidates). */
 export const MAP_FILE_ACCEPT = 'application/json,.json,text/plain,.txt';
@@ -134,6 +136,19 @@ export function buildShareLink(mapUrl: string, appUrl: string): string {
   url.search = '';
   url.hash = '';
   url.searchParams.set(MAP_URL_PARAM, mapUrl);
+  return url.href;
+}
+
+/**
+ * App URL that starts navigation to a location. With the map's share URL it also carries the
+ * map, so it works on devices that do not have the map yet.
+ */
+export function buildNodeLink(appUrl: string, nodeId: string, mapUrl?: string): string {
+  const url = new URL(appUrl);
+  url.search = '';
+  url.hash = '';
+  if (mapUrl) url.searchParams.set(MAP_URL_PARAM, mapUrl);
+  url.searchParams.set(TO_URL_PARAM, nodeId);
   return url.href;
 }
 

@@ -1,6 +1,8 @@
-import { Trash2, Video, X } from 'lucide-react';
+import { Check, Copy, QrCode as QrCodeIcon, Share2, Trash2, Video, X } from 'lucide-react';
+import { useState } from 'react';
 import type { MapNode } from '../../types/map';
 import { Button } from '../ui/Button';
+import { QrCode } from '../ui/QrCode';
 
 interface NodeDetailsCardProps {
   node: MapNode;
@@ -9,6 +11,10 @@ interface NodeDetailsCardProps {
   onClearViews: () => void;
   onDelete: () => void;
   onClose: () => void;
+  /** App URL that starts navigation to this location. */
+  link: string;
+  /** Whether the link also carries the map, so it works on any device. */
+  linkHasMap: boolean;
 }
 
 const input =
@@ -22,8 +28,19 @@ export function NodeDetailsCard({
   onClearViews,
   onDelete,
   onClose,
+  link,
+  linkHasMap,
 }: NodeDetailsCardProps) {
   const views = node.embeddings.length;
+  const [copied, setCopied] = useState(false);
+  const [showQr, setShowQr] = useState(false);
+  // Another location selected: back to the plain link section.
+  const [shownFor, setShownFor] = useState(node.id);
+  if (shownFor !== node.id) {
+    setShownFor(node.id);
+    setCopied(false);
+    setShowQr(false);
+  }
 
   return (
     <section className="flex flex-col gap-3 rounded-2xl border border-brand-200 bg-brand-50/80 p-3.5 dark:border-brand-900 dark:bg-brand-900/20">
@@ -98,6 +115,60 @@ export function NodeDetailsCard({
             </Button>
           )}
         </div>
+      </div>
+
+      <div className="rounded-xl border border-brand-100 bg-white p-2.5 dark:border-slate-700 dark:bg-slate-900">
+        <span className="mb-1 block text-[11px] font-semibold text-slate-700 dark:text-slate-300">
+          Navigation link
+        </span>
+        <p className="mb-2 text-[11px] leading-relaxed text-slate-500">
+          Opening this link starts navigation to this location.
+          {!linkHasMap &&
+            ' It works on devices that already have this map; load the map from a share link to make it work everywhere.'}
+        </p>
+        <p className="mb-2 truncate rounded-md bg-slate-100 px-2 py-1 font-mono text-[10px] text-slate-600 dark:bg-slate-800 dark:text-slate-400">
+          {link}
+        </p>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            size="sm"
+            variant="secondary"
+            icon={copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
+            onClick={() => {
+              void navigator.clipboard.writeText(link).then(() => {
+                setCopied(true);
+              });
+            }}
+          >
+            {copied ? 'Copied' : 'Copy'}
+          </Button>
+          {'share' in navigator && (
+            <Button
+              size="sm"
+              variant="secondary"
+              icon={<Share2 className="size-3.5" />}
+              onClick={() => {
+                navigator.share({ title: node.label, url: link }).catch(() => undefined);
+              }}
+            >
+              Share
+            </Button>
+          )}
+          <Button
+            size="sm"
+            variant="secondary"
+            aria-pressed={showQr}
+            icon={<QrCodeIcon className="size-3.5" />}
+            onClick={() => {
+              setShowQr((v) => !v);
+            }}
+          >
+            QR
+          </Button>
+        </div>
+        {showQr && (
+          <QrCode value={link} label={`QR code: navigate to ${node.label}`} className="mx-auto mt-2 w-40" />
+        )}
       </div>
 
       <Button

@@ -1,5 +1,6 @@
 import type { MapData, MapMetadata, MapNode, Point } from '../types/map';
 import type { EmbeddingSample } from '../types/vision';
+import { mapBends, sameEdge } from './corridors';
 
 /** Pure, immutable editor operations on a map. */
 
@@ -26,10 +27,6 @@ export function deleteNode(map: MapData, id: string): MapData {
   if (!(id in map.nodes)) return map;
   const nodes = Object.fromEntries(Object.entries(map.nodes).filter(([key]) => key !== id));
   return { ...map, nodes, edges: map.edges.filter(([a, b]) => a !== id && b !== id) };
-}
-
-function sameEdge(a: string, b: string, [u, v]: [string, string]): boolean {
-  return (u === a && v === b) || (u === b && v === a);
 }
 
 /** Adds a corridor between two nodes, or removes it when it already exists. */
@@ -66,7 +63,7 @@ export function mapSize(ratio: number): MapSize {
 }
 
 /**
- * Changes the map's width / height ratio. Nodes and rooms are rescaled with the canvas so they
+ * Changes the map's width / height ratio. Nodes, bends and rooms are rescaled with the canvas so they
  * stay on the same spot of the (stretched-to-fit) floor plan.
  */
 export function setMapAspect(map: MapData, ratio: number): MapData {
@@ -84,7 +81,8 @@ export function setMapAspect(map: MapData, ratio: number): MapData {
     w: Math.max(0.1, round1(r.w * sx)),
     h: Math.max(0.1, round1(r.h * sy)),
   }));
-  return { ...map, nodes, rooms, metadata: { ...map.metadata, width, height } };
+  const edges = mapBends(map.edges, (p) => ({ x: round1(p.x * sx), y: round1(p.y * sy) }));
+  return { ...map, nodes, edges, rooms, metadata: { ...map.metadata, width, height } };
 }
 
 /** Quarter turns (0–3) contained in the floor plan rotation. */
@@ -123,7 +121,7 @@ export function setFloorPlanFineRotation(map: MapData, fineDeg: number): MapData
 }
 
 /**
- * Turns the whole design by 90° (clockwise when `clockwise`): floor plan, nodes and rooms. The
+ * Turns the whole design by 90° (clockwise when `clockwise`): floor plan, nodes, bends and rooms. The
  * canvas swaps its sides and the compass offset follows, so navigation keeps working.
  */
 export function rotateMap90(map: MapData, clockwise: boolean): MapData {
@@ -146,6 +144,7 @@ export function rotateMap90(map: MapData, clockwise: boolean): MapData {
   return {
     ...map,
     nodes,
+    edges: mapBends(map.edges, turn),
     rooms,
     metadata: {
       ...map.metadata,

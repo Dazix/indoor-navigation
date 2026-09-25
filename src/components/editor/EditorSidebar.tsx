@@ -21,9 +21,10 @@ import {
   MAX_FINE_ROTATION_DEG,
   metersPerUnitForLongSide,
 } from '../../services/mapEditing';
-import { MAP_FILE_ACCEPT } from '../../services/mapSharing';
+import { buildNodeLink, MAP_FILE_ACCEPT } from '../../services/mapSharing';
 import type { MapData, MapMetadata, MapNode } from '../../types/map';
 import type { EditorTool } from '../../types/navigation';
+import { LocationSearch } from '../map/LocationSearch';
 import { Button } from '../ui/Button';
 import { NodeDetailsCard } from './NodeDetailsCard';
 
@@ -53,6 +54,10 @@ interface EditorSidebarProps {
   onClearViews: () => void;
   onDeleteNode: () => void;
   onDeselect: () => void;
+  /** URL the active map was loaded from via a share link; location links then carry it. */
+  mapSourceUrl?: string;
+  /** A location picked in the search field. */
+  onFindNode: (nodeId: string) => void;
 }
 
 const TOOLS: { id: EditorTool; label: string; icon: ReactNode; hint: string }[] = [
@@ -60,7 +65,7 @@ const TOOLS: { id: EditorTool; label: string; icon: ReactNode; hint: string }[] 
     id: 'select',
     label: 'Select',
     icon: <MousePointer2 className="size-4" />,
-    hint: 'Tap a location to edit it, drag to move it.',
+    hint: 'Tap a location to edit it, drag to move it. Click a corridor to add a bend point.',
   },
   {
     id: 'add_node',
@@ -78,7 +83,7 @@ const TOOLS: { id: EditorTool; label: string; icon: ReactNode; hint: string }[] 
     id: 'delete',
     label: 'Delete',
     icon: <Trash2 className="size-4" />,
-    hint: 'Tap a location to delete it with its corridors.',
+    hint: 'Tap a location, a corridor or a bend point to delete it.',
   },
 ];
 
@@ -94,6 +99,7 @@ export function EditorSidebar(props: EditorSidebarProps) {
   const activeTool = TOOLS.find((t) => t.id === tool);
   const { width, height, metersPerUnit } = map.metadata;
   const fineDeg = floorPlanFineDeg(map.metadata.floorPlanRotationDeg);
+  const appUrl = new URL(import.meta.env.BASE_URL, window.location.origin).href;
 
   const pickFile = (e: ChangeEvent<HTMLInputElement>, handler: (file: File) => void) => {
     const file = e.target.files?.[0];
@@ -103,6 +109,10 @@ export function EditorSidebar(props: EditorSidebarProps) {
 
   return (
     <aside className="z-10 flex max-h-[45dvh] w-full shrink-0 flex-col gap-4 overflow-x-hidden overflow-y-auto border-b border-slate-200 bg-white p-4 shadow-lg md:max-h-none md:w-80 md:border-r md:border-b-0 dark:border-slate-800 dark:bg-slate-900">
+      {Object.keys(map.nodes).length > 0 && (
+        <LocationSearch map={map} placeholder="Find a location" onPick={props.onFindNode} />
+      )}
+
       <section>
         <h2 className={heading}>Tools</h2>
         <div className="grid grid-cols-4 gap-1 rounded-xl bg-slate-100 p-1 dark:bg-slate-800" role="toolbar">
@@ -156,6 +166,8 @@ export function EditorSidebar(props: EditorSidebarProps) {
           onClearViews={props.onClearViews}
           onDelete={props.onDeleteNode}
           onClose={props.onDeselect}
+          link={buildNodeLink(appUrl, selectedNode.id, props.mapSourceUrl)}
+          linkHasMap={Boolean(props.mapSourceUrl)}
         />
       )}
 

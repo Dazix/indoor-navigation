@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { insertBend } from './corridors';
 import { addNode, toggleEdge } from './mapEditing';
 import { createBlankMap } from './mapLibrary';
 import { computeRoute, formatDistance } from './navigation';
@@ -31,6 +32,34 @@ describe('computeRoute', () => {
   it('reports arrival at the end of the route or when already there', () => {
     expect(computeRoute(map, 'a', 'c', 100)).toMatchObject({ arrived: true, next: null });
     expect(computeRoute(map, 'c', 'c')).toMatchObject({ arrived: true, totalM: 0 });
+  });
+
+  it('follows corridor bends without treating them as waypoints', () => {
+    // Direct a → c corridor bent through (10,50): same L shape as a → b → c.
+    let bent = createBlankMap('Bent');
+    bent = { ...bent, metadata: { ...bent.metadata, metersPerUnit: 0.5 } };
+    bent = addNode(bent, { id: 'a', x: 10, y: 90, label: 'A', markerCode: '' });
+    bent = addNode(bent, { id: 'c', x: 50, y: 50, label: 'C', markerCode: '' });
+    bent = insertBend(toggleEdge(bent, 'a', 'c'), 0, 0, { x: 10, y: 50 });
+
+    const start = computeRoute(bent, 'a', 'c');
+    expect(start?.path).toEqual(['a', 'c']);
+    expect(start?.points).toEqual([
+      { x: 10, y: 90 },
+      { x: 10, y: 50 },
+      { x: 50, y: 50 },
+    ]);
+    expect(start?.totalM).toBe(40);
+    expect(start?.next).toMatchObject({ bearingDeg: 0, distanceM: 40 });
+    expect(start?.next?.node.id).toBe('c');
+
+    const afterCorner = computeRoute(bent, 'a', 'c', 30);
+    expect(afterCorner?.nextNodeIndex).toBe(1);
+    expect(afterCorner?.next?.bearingDeg).toBeCloseTo(90);
+    expect(afterCorner?.next?.distanceM).toBeCloseTo(10);
+
+    // Walked backwards the bend order is reversed.
+    expect(computeRoute(bent, 'c', 'a')?.points[1]).toEqual({ x: 10, y: 50 });
   });
 
   it('returns null without a route', () => {

@@ -24,6 +24,8 @@ const MapNodeSchema = z.object({
   fingerprint: z.array(z.number()).optional(),
 });
 
+const PointSchema = z.object({ x: coordinate, y: coordinate });
+
 const RoomSchema = z.object({
   id: z.string().min(1),
   x: coordinate,
@@ -66,7 +68,12 @@ export const MapDataSchema = z
     metadata: MapMetadataSchema.prefault({}),
     floorPlanImage: FloorPlanSchema,
     nodes: z.record(z.string(), MapNodeSchema),
-    edges: z.array(z.tuple([z.string(), z.string()])),
+    edges: z.array(
+      z.union([
+        z.tuple([z.string(), z.string()]),
+        z.tuple([z.string(), z.string(), z.array(PointSchema).max(200)]),
+      ]),
+    ),
     rooms: z.array(RoomSchema).default([]),
   })
   .superRefine((map, ctx) => {
@@ -96,12 +103,19 @@ export const MapDataSchema = z
         });
       }
     });
-    map.edges.forEach(([u, v], i) => {
+    map.edges.forEach(([u, v, bends], i) => {
       if (!(u in map.nodes) || !(v in map.nodes)) {
         ctx.addIssue({
           code: 'custom',
           path: ['edges', i],
           message: `Edge references a missing node (${u} – ${v})`,
+        });
+      }
+      if (bends?.some((p) => p.x > width || p.y > height)) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['edges', i],
+          message: `Corridor bend lies outside the ${width} × ${height} map`,
         });
       }
     });

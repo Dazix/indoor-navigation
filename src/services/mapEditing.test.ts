@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { edgeBends, insertBend } from './corridors';
 import { createBlankMap } from './mapLibrary';
 import {
   addNode,
@@ -125,6 +126,14 @@ describe('rotation', () => {
       floorPlanRotationDeg: 0,
       northOffsetDeg: 0,
     });
+  });
+
+  it('moves corridor bends with the canvas', () => {
+    const map = insertBend(sampleMap(), 0, 0, { x: 10, y: 20 });
+    expect(edgeBends(setMapAspect(map, 2).edges[0] ?? ['a', 'b'])).toEqual([{ x: 10, y: 10 }]);
+    const cw = rotateMap90(map, true);
+    expect(edgeBends(cw.edges[0] ?? ['a', 'b'])).toEqual([{ x: 80, y: 10 }]);
+    expect(rotateMap90(cw, false).edges).toEqual(map.edges);
   });
 
   it('straightens only the image and keeps its quarter turns', () => {
