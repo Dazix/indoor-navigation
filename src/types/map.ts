@@ -5,7 +5,7 @@ export interface Point {
   y: number;
 }
 
-/** Navigation waypoint. Coordinates are in map units (0–100 on both axes of the floor plan). */
+/** Navigation waypoint. Coordinates are in map units (0–width / 0–height, see MapMetadata). */
 export interface MapNode extends Point {
   id: string;
   label: string;
@@ -38,6 +38,11 @@ export interface MapMetadata {
   metersPerUnit: number;
   /** Compass heading (degrees clockwise from magnetic north) that the top of the floor plan faces. */
   northOffsetDeg: number;
+  /** Map extent in units. Units are square; the longer side is 100, the other follows the plan's ratio. */
+  width: number;
+  height: number;
+  /** Rotation of the floor plan image only (degrees clockwise); nodes and rooms are not affected. */
+  floorPlanRotationDeg: number;
 }
 
 /** Lightweight entry in the map library; the full MapData lives in IndexedDB. */

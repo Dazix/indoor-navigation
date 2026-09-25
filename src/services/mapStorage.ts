@@ -43,6 +43,9 @@ const MapMetadataSchema = z.object({
   version: z.number().int().nonnegative().default(1),
   metersPerUnit: z.number().positive().max(100).default(0.3),
   northOffsetDeg: z.number().min(-360).max(360).default(0),
+  width: z.number().positive().max(100).default(100),
+  height: z.number().positive().max(100).default(100),
+  floorPlanRotationDeg: z.number().min(-360).max(360).default(0),
 });
 
 /** Uploaded image (data URL), absolute http(s) URL, or an asset path relative to the app base. */
@@ -67,7 +70,15 @@ export const MapDataSchema = z
     rooms: z.array(RoomSchema).default([]),
   })
   .superRefine((map, ctx) => {
+    const { width, height } = map.metadata;
     for (const [key, node] of Object.entries(map.nodes)) {
+      if (node.x > width || node.y > height) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['nodes', key],
+          message: `Node lies outside the ${width} × ${height} map`,
+        });
+      }
       if (node.id !== key) {
         ctx.addIssue({
           code: 'custom',
@@ -76,6 +87,15 @@ export const MapDataSchema = z
         });
       }
     }
+    map.rooms.forEach((room, i) => {
+      if (room.x + room.w > width + 0.01 || room.y + room.h > height + 0.01) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['rooms', i],
+          message: `Room lies outside the ${width} × ${height} map`,
+        });
+      }
+    });
     map.edges.forEach(([u, v], i) => {
       if (!(u in map.nodes) || !(v in map.nodes)) {
         ctx.addIssue({

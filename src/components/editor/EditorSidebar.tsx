@@ -7,11 +7,20 @@ import {
   MousePointer2,
   Plus,
   QrCode,
+  RotateCcw,
+  RotateCw,
+  Scan,
   Share2,
   Trash2,
   Upload,
 } from 'lucide-react';
-import { useRef, type ChangeEvent, type ReactNode } from 'react';
+import { useState, useRef, type ChangeEvent, type ReactNode } from 'react';
+import {
+  floorPlanFineDeg,
+  longSideMeters,
+  MAX_FINE_ROTATION_DEG,
+  metersPerUnitForLongSide,
+} from '../../services/mapEditing';
 import { MAP_FILE_ACCEPT } from '../../services/mapSharing';
 import type { MapData, MapMetadata, MapNode } from '../../types/map';
 import type { EditorTool } from '../../types/navigation';
@@ -29,6 +38,11 @@ interface EditorSidebarProps {
   onFloorPlanUpload: (file: File) => void;
   onFloorPlanRemove: () => void;
   onFloorPlanPaste: () => void;
+  /** New width / height ratio of the map. */
+  onAspectChange: (ratio: number) => void;
+  onFitToImage: () => void;
+  onRotate90: (clockwise: boolean) => void;
+  onFineRotation: (deg: number) => void;
   onExport: () => void;
   onShare: () => void;
   onSendNearby: () => void;
@@ -78,6 +92,8 @@ export function EditorSidebar(props: EditorSidebarProps) {
   const planInput = useRef<HTMLInputElement>(null);
   const jsonInput = useRef<HTMLInputElement>(null);
   const activeTool = TOOLS.find((t) => t.id === tool);
+  const { width, height, metersPerUnit } = map.metadata;
+  const fineDeg = floorPlanFineDeg(map.metadata.floorPlanRotationDeg);
 
   const pickFile = (e: ChangeEvent<HTMLInputElement>, handler: (file: File) => void) => {
     const file = e.target.files?.[0];
@@ -113,6 +129,9 @@ export function EditorSidebar(props: EditorSidebarProps) {
           {tool === 'link_nodes' && linkFrom
             ? `Connecting from “${linkFrom.label}” — tap the second location.`
             : activeTool?.hint}
+        </p>
+        <p className="mt-1 text-[10px] text-slate-500">
+          Scroll or pinch to zoom, drag an empty spot to pan. Zoomed in, points snap more finely.
         </p>
       </section>
 
@@ -163,7 +182,7 @@ export function EditorSidebar(props: EditorSidebarProps) {
               min={0.01}
               max={100}
               step={0.01}
-              value={map.metadata.metersPerUnit}
+              value={Math.round(map.metadata.metersPerUnit * 10000) / 10000}
               onChange={(e) => {
                 const v = e.target.valueAsNumber;
                 if (v > 0 && v <= 100) props.onMetadataChange({ metersPerUnit: v });
@@ -187,9 +206,33 @@ export function EditorSidebar(props: EditorSidebarProps) {
             />
           </label>
         </div>
+        <div className="grid grid-cols-2 gap-2">
+          <label className="flex min-w-0 flex-col gap-1 text-[11px] font-semibold text-slate-600 dark:text-slate-400">
+            Longer side (m)
+            <input
+              className={input}
+              type="number"
+              inputMode="decimal"
+              min={0.1}
+              step={0.1}
+              value={Math.round(longSideMeters(map.metadata) * 100) / 100}
+              onChange={(e) => {
+                const mpu = metersPerUnitForLongSide(map.metadata, e.target.valueAsNumber);
+                if (mpu > 0 && mpu <= 100) props.onMetadataChange({ metersPerUnit: mpu });
+              }}
+            />
+          </label>
+          <AspectInput
+            width={map.metadata.width}
+            height={map.metadata.height}
+            onChange={props.onAspectChange}
+          />
+        </div>
         <p className="text-[10px] leading-relaxed text-slate-500">
-          The map is 100 × 100 units. “Plan faces” is the compass heading you look at when facing the top of
-          the floor plan; the AR arrow uses it.
+          The map is {formatNumber(width)} × {formatNumber(height)} units ={' '}
+          {formatNumber(width * metersPerUnit)} × {formatNumber(height * metersPerUnit)} m. Enter the real
+          length of the plan’s longer side and the scale follows. “Plan faces” is the compass heading you look
+          at when facing the top of the floor plan; the AR arrow uses it.
         </p>
       </section>
 
@@ -235,6 +278,70 @@ export function EditorSidebar(props: EditorSidebarProps) {
           )}
         </div>
         <p className="text-[10px] text-slate-500">Tip: copy a screenshot and press Ctrl+V / ⌘V here.</p>
+        <div className="flex gap-2">
+          <Button
+            variant="secondary"
+            size="sm"
+            fullWidth
+            icon={<RotateCcw className="size-4" />}
+            onClick={() => {
+              props.onRotate90(false);
+            }}
+            title="Turn the whole plan with its locations 90° counter-clockwise"
+          >
+            90°
+          </Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            fullWidth
+            icon={<RotateCw className="size-4" />}
+            onClick={() => {
+              props.onRotate90(true);
+            }}
+            title="Turn the whole plan with its locations 90° clockwise"
+          >
+            90°
+          </Button>
+          {map.floorPlanImage && (
+            <Button
+              variant="secondary"
+              size="sm"
+              fullWidth
+              icon={<Scan className="size-4" />}
+              onClick={props.onFitToImage}
+              title="Set the map’s aspect ratio to the floor plan image so it is not stretched"
+            >
+              Fit
+            </Button>
+          )}
+        </div>
+        {map.floorPlanImage && (
+          <label className="flex min-w-0 flex-col gap-1 text-[11px] font-semibold text-slate-600 dark:text-slate-400">
+            <span className="flex justify-between">
+              Straighten image
+              <span className="font-mono tabular-nums">{formatNumber(fineDeg)}°</span>
+            </span>
+            <input
+              type="range"
+              className="accent-brand-600"
+              min={-MAX_FINE_ROTATION_DEG}
+              max={MAX_FINE_ROTATION_DEG}
+              step={0.5}
+              value={fineDeg}
+              onChange={(e) => {
+                props.onFineRotation(e.target.valueAsNumber);
+              }}
+              onDoubleClick={() => {
+                props.onFineRotation(0);
+              }}
+            />
+          </label>
+        )}
+        <p className="text-[10px] leading-relaxed text-slate-500">
+          90° turns the whole design. “Straighten” rotates only the image under the locations (double-click
+          resets it).
+        </p>
         <input
           ref={jsonInput}
           type="file"
@@ -301,5 +408,64 @@ export function EditorSidebar(props: EditorSidebarProps) {
         </p>
       </section>
     </aside>
+  );
+}
+
+function formatNumber(v: number): string {
+  return String(Math.round(v * 10) / 10);
+}
+
+/**
+ * Width : height of the map. Edits are kept locally and applied on Enter / blur, because the map
+ * normalises the ratio (longer side 100) and would rewrite the fields while typing.
+ */
+function AspectInput({
+  width,
+  height,
+  onChange,
+}: {
+  width: number;
+  height: number;
+  onChange: (ratio: number) => void;
+}) {
+  const [draft, setDraft] = useState<{ w: string; h: string } | null>(null);
+  const w = draft?.w ?? formatNumber(width);
+  const h = draft?.h ?? formatNumber(height);
+
+  const commit = () => {
+    if (!draft) return;
+    const ratio = parseFloat(draft.w) / parseFloat(draft.h);
+    setDraft(null);
+    if (Number.isFinite(ratio) && ratio > 0 && ratio !== width / height) onChange(ratio);
+  };
+  const field = (value: string, key: 'w' | 'h', label: string) => (
+    <input
+      className={`${input.replace('px-2.5', 'px-1')} min-w-0 text-center tabular-nums`}
+      type="number"
+      inputMode="decimal"
+      min={0.1}
+      step="any"
+      aria-label={label}
+      value={value}
+      onChange={(e) => {
+        setDraft({ w, h, [key]: e.target.value });
+      }}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') commit();
+        if (e.key === 'Escape') setDraft(null);
+      }}
+    />
+  );
+
+  return (
+    <div className="flex min-w-0 flex-col gap-1 text-[11px] font-semibold text-slate-600 dark:text-slate-400">
+      Aspect (W : H)
+      <div className="flex items-center gap-1">
+        {field(w, 'w', 'Aspect width')}
+        <span>:</span>
+        {field(h, 'h', 'Aspect height')}
+      </div>
+    </div>
   );
 }

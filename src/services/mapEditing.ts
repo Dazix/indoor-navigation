@@ -47,16 +47,133 @@ export function setEmbeddings(map: MapData, id: string, embeddings: EmbeddingSam
   return updateNode(map, id, { embeddings, fingerprint: undefined });
 }
 
-export function setFloorPlan(map: MapData, floorPlanImage: string | null): MapData {
-  return { ...map, floorPlanImage };
+export interface MapSize {
+  width: number;
+  height: number;
+}
+
+/** Length of the longer map side in units. */
+export const MAP_LONG_SIDE = 100;
+
+const round1 = (v: number) => Math.round(v * 10) / 10;
+
+/** Map extent for a width / height ratio: the longer side is MAP_LONG_SIDE units. */
+export function mapSize(ratio: number): MapSize {
+  if (!Number.isFinite(ratio) || ratio <= 0) return { width: MAP_LONG_SIDE, height: MAP_LONG_SIDE };
+  return ratio >= 1
+    ? { width: MAP_LONG_SIDE, height: Math.max(1, round1(MAP_LONG_SIDE / ratio)) }
+    : { width: Math.max(1, round1(MAP_LONG_SIDE * ratio)), height: MAP_LONG_SIDE };
+}
+
+/**
+ * Changes the map's width / height ratio. Nodes and rooms are rescaled with the canvas so they
+ * stay on the same spot of the (stretched-to-fit) floor plan.
+ */
+export function setMapAspect(map: MapData, ratio: number): MapData {
+  const { width, height } = mapSize(ratio);
+  const sx = width / map.metadata.width;
+  const sy = height / map.metadata.height;
+  if (sx === 1 && sy === 1) return map;
+  const nodes = Object.fromEntries(
+    Object.entries(map.nodes).map(([id, n]) => [id, { ...n, x: round1(n.x * sx), y: round1(n.y * sy) }]),
+  );
+  const rooms = map.rooms.map((r) => ({
+    ...r,
+    x: round1(r.x * sx),
+    y: round1(r.y * sy),
+    w: Math.max(0.1, round1(r.w * sx)),
+    h: Math.max(0.1, round1(r.h * sy)),
+  }));
+  return { ...map, nodes, rooms, metadata: { ...map.metadata, width, height } };
+}
+
+/** Quarter turns (0–3) contained in the floor plan rotation. */
+export function floorPlanQuarterTurns(rotationDeg: number): number {
+  return ((Math.round(rotationDeg / 90) % 4) + 4) % 4;
+}
+
+/** Canvas ratio that shows an image of `imageRatio` undistorted under the map's floor plan rotation. */
+export function canvasRatioForImage(map: MapData, imageRatio: number): number {
+  return floorPlanQuarterTurns(map.metadata.floorPlanRotationDeg) % 2 ? 1 / imageRatio : imageRatio;
+}
+
+/** Sets the floor plan; with the image's width / height ratio the map takes that ratio too. */
+export function setFloorPlan(map: MapData, floorPlanImage: string | null, imageRatio?: number): MapData {
+  let next: MapData = { ...map, floorPlanImage };
+  if (floorPlanImage && imageRatio) {
+    next = updateMetadata(next, { floorPlanRotationDeg: 0 });
+    next = setMapAspect(next, imageRatio);
+  }
+  return next;
+}
+
+/** Largest fine rotation; staying below 45° keeps the quarter-turn count unambiguous. */
+export const MAX_FINE_ROTATION_DEG = 44.5;
+
+/** Fine rotation of the floor plan image on top of its quarter turns. */
+export function floorPlanFineDeg(rotationDeg: number): number {
+  return rotationDeg - Math.round(rotationDeg / 90) * 90;
+}
+
+/** Sets the fine rotation (±MAX_FINE_ROTATION_DEG) of the floor plan image, keeping its quarter turns. */
+export function setFloorPlanFineRotation(map: MapData, fineDeg: number): MapData {
+  const quarters = floorPlanQuarterTurns(map.metadata.floorPlanRotationDeg);
+  const fine = Math.max(-MAX_FINE_ROTATION_DEG, Math.min(MAX_FINE_ROTATION_DEG, fineDeg));
+  return updateMetadata(map, { floorPlanRotationDeg: quarters * 90 + fine });
+}
+
+/**
+ * Turns the whole design by 90° (clockwise when `clockwise`): floor plan, nodes and rooms. The
+ * canvas swaps its sides and the compass offset follows, so navigation keeps working.
+ */
+export function rotateMap90(map: MapData, clockwise: boolean): MapData {
+  const { width: w, height: h } = map.metadata;
+  const turn = (p: Point): Point => (clockwise ? { x: h - p.y, y: p.x } : { x: p.y, y: w - p.x });
+  const nodes = Object.fromEntries(Object.entries(map.nodes).map(([id, n]) => [id, { ...n, ...turn(n) }]));
+  const rooms = map.rooms.map((r) => {
+    const a = turn({ x: r.x, y: r.y });
+    const b = turn({ x: r.x + r.w, y: r.y + r.h });
+    return {
+      ...r,
+      x: Math.min(a.x, b.x),
+      y: Math.min(a.y, b.y),
+      w: r.h,
+      h: r.w,
+    };
+  });
+  const delta = clockwise ? 90 : -90;
+  const { floorPlanRotationDeg, northOffsetDeg } = map.metadata;
+  return {
+    ...map,
+    nodes,
+    rooms,
+    metadata: {
+      ...map.metadata,
+      width: h,
+      height: w,
+      floorPlanRotationDeg: ((((floorPlanRotationDeg + delta + 180) % 360) + 360) % 360) - 180,
+      northOffsetDeg: (((northOffsetDeg - delta) % 360) + 360) % 360,
+    },
+  };
 }
 
 export function updateMetadata(map: MapData, patch: Partial<MapMetadata>): MapData {
   return { ...map, metadata: { ...map.metadata, ...patch } };
 }
 
-/** Clamps a point to the 0–100 map space and rounds it to 0.5 units. */
-export function snapToMap({ x, y }: Point): Point {
-  const snap = (v: number) => Math.round(Math.min(100, Math.max(0, v)) * 2) / 2;
-  return { x: snap(x), y: snap(y) };
+/** Real-world length of the map's longer side in metres. */
+export function longSideMeters(metadata: MapMetadata): number {
+  return Math.max(metadata.width, metadata.height) * metadata.metersPerUnit;
+}
+
+/** Scale (m / unit) that makes the longer map side `meters` long. */
+export function metersPerUnitForLongSide(metadata: MapMetadata, meters: number): number {
+  return meters / Math.max(metadata.width, metadata.height);
+}
+
+/** Clamps a point into the map and rounds it to `step` units. */
+export function snapToMap({ x, y }: Point, size: MapSize, step = 0.5): Point {
+  const snap = (v: number, max: number) =>
+    Math.round(Math.round(Math.min(max, Math.max(0, v)) / step) * step * 100) / 100;
+  return { x: snap(x, size.width), y: snap(y, size.height) };
 }

@@ -31,7 +31,15 @@ export function createMapId(): string {
 
 export function createBlankMap(name: string): MapData {
   return {
-    metadata: { name, version: 1, metersPerUnit: 0.3, northOffsetDeg: 0 },
+    metadata: {
+      name,
+      version: 1,
+      metersPerUnit: 0.3,
+      northOffsetDeg: 0,
+      width: 100,
+      height: 100,
+      floorPlanRotationDeg: 0,
+    },
     floorPlanImage: null,
     nodes: {},
     edges: [],

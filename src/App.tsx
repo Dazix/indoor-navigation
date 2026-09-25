@@ -11,14 +11,18 @@ import { useOrientation } from './hooks/useOrientation';
 import { usePDR } from './hooks/usePDR';
 import { useTensorFlow } from './hooks/useTensorFlow';
 import { normalizeDeg } from './services/geometry';
-import { pickImageFile, readClipboardImage, readFloorPlanFile } from './services/imageFiles';
+import { imageRatio, pickImageFile, readClipboardImage, readFloorPlanFile } from './services/imageFiles';
 import {
   addNode,
+  canvasRatioForImage,
   createNodeId,
   deleteNode,
   moveNode,
+  rotateMap90,
   setEmbeddings,
   setFloorPlan,
+  setFloorPlanFineRotation,
+  setMapAspect,
   toggleEdge,
   updateMetadata,
   updateNode,
@@ -30,7 +34,7 @@ import {
   resolveMapUrl,
   shareMap,
 } from './services/mapSharing';
-import { importMapFromFile } from './services/mapStorage';
+import { importMapFromFile, resolveAssetUrl } from './services/mapStorage';
 import { computeRoute, formatDistance } from './services/navigation';
 import type { MapData, Point } from './types/map';
 import type { AppMode, EditorTool } from './types/navigation';
@@ -238,8 +242,8 @@ export default function App() {
   const handleFloorPlan = useCallback(
     (file: File, successText?: string) => {
       readFloorPlanFile(file)
-        .then((src) => {
-          updateMap((m) => setFloorPlan(m, src));
+        .then(({ src, ratio }) => {
+          updateMap((m) => setFloorPlan(m, src, ratio));
           if (successText) setNotice({ tone: 'info', text: successText });
         })
         .catch((err: unknown) => {
@@ -339,6 +343,21 @@ export default function App() {
             onFloorPlanRemove={() => {
               updateMap((m) => setFloorPlan(m, null));
             }}
+            onAspectChange={(ratio) => {
+              updateMap((m) => setMapAspect(m, ratio));
+            }}
+            onFitToImage={() => {
+              if (!map.floorPlanImage) return;
+              void imageRatio(resolveAssetUrl(map.floorPlanImage)).then((ratio) => {
+                updateMap((m) => setMapAspect(m, canvasRatioForImage(m, ratio)));
+              });
+            }}
+            onRotate90={(clockwise) => {
+              updateMap((m) => rotateMap90(m, clockwise));
+            }}
+            onFineRotation={(deg) => {
+              updateMap((m) => setFloorPlanFineRotation(m, deg));
+            }}
             onExport={() => {
               void exportMapToFile(map);
             }}
@@ -404,6 +423,7 @@ export default function App() {
             </Suspense>
           ) : (
             <InteractiveMap
+              key={activeMapId}
               map={map}
               route={mode === 'user' ? route : null}
               currentLocation={currentLocation}

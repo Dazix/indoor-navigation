@@ -34,8 +34,17 @@ describe('parseMapData', () => {
       version: 1,
       metersPerUnit: 0.3,
       northOffsetDeg: 0,
+      width: 100,
+      height: 100,
+      floorPlanRotationDeg: 0,
     });
     expect(result.data.nodes.hub?.embeddings).toEqual([]);
+  });
+
+  it('rejects nodes outside the map size', () => {
+    const map = clone();
+    map.metadata = { ...(map.metadata as object), width: 100, height: 10 };
+    expect(errorOf(map)).toContain('outside the 100 × 10 map');
   });
 
   it('rejects missing required fields', () => {

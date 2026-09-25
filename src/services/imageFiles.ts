@@ -15,30 +15,89 @@ function readAsDataUrl(file: Blob): Promise<string> {
   });
 }
 
+export interface FloorPlanImage {
+  /** Data URL of the image. */
+  src: string;
+  /** Width / height of the image. */
+  ratio: number;
+}
+
+function positive(v: string | undefined): number | null {
+  const n = v === undefined ? NaN : parseFloat(v);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+/** Width / height of an SVG document from its viewBox, else its width/height attributes. */
+export function svgRatio(svg: string): number | null {
+  const root = /<svg\b[^>]*>/i.exec(svg)?.[0];
+  if (!root) return null;
+  const viewBox = /\bviewBox\s*=\s*["']([^"']+)["']/i
+    .exec(root)?.[1]
+    ?.trim()
+    .split(/[\s,]+/);
+  const vw = positive(viewBox?.[2]);
+  const vh = positive(viewBox?.[3]);
+  if (vw && vh) return vw / vh;
+  const w = positive(/\bwidth\s*=\s*["']([\d.]+)(?:px)?["']/i.exec(root)?.[1]);
+  const h = positive(/\bheight\s*=\s*["']([\d.]+)(?:px)?["']/i.exec(root)?.[1]);
+  return w && h ? w / h : null;
+}
+
+function loadImageRatio(src: string): Promise<number | null> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      resolve(img.naturalWidth > 0 && img.naturalHeight > 0 ? img.naturalWidth / img.naturalHeight : null);
+    };
+    img.onerror = () => {
+      resolve(null);
+    };
+    img.src = src;
+  });
+}
+
+/** Width / height of an image given by URL (data URL, absolute or already resolved asset URL). */
+export async function imageRatio(src: string): Promise<number> {
+  if (/^data:image\/svg\+xml|\.svg(\?|#|$)/i.test(src)) {
+    try {
+      const fromSvg = svgRatio(await (await fetch(src)).text());
+      if (fromSvg) return fromSvg;
+    } catch {
+      // Fall back to the browser's intrinsic size below.
+    }
+  }
+  return (await loadImageRatio(src)) ?? 1;
+}
+
 /**
- * Reads an uploaded floor plan as a data URL. SVGs are kept as-is; raster images larger than
- * MAX_EDGE_PX are downscaled and re-encoded as WebP (JPEG where WebP encoding is unsupported).
+ * Reads an uploaded floor plan as a data URL together with its aspect ratio. SVGs are kept as-is;
+ * raster images larger than MAX_EDGE_PX are downscaled and re-encoded as WebP (JPEG where WebP
+ * encoding is unsupported).
  */
-export async function readFloorPlanFile(file: File): Promise<string> {
+export async function readFloorPlanFile(file: File): Promise<FloorPlanImage> {
   if (!file.type.startsWith('image/')) throw new Error('Please choose an image file');
   if (file.size > MAX_IMAGE_BYTES) throw new Error('Image is larger than 20 MB');
-  if (file.type === 'image/svg+xml') return readAsDataUrl(file);
+  if (file.type === 'image/svg+xml') {
+    const src = await readAsDataUrl(file);
+    return { src, ratio: svgRatio(await file.text()) ?? (await loadImageRatio(src)) ?? 1 };
+  }
 
   const bitmap = await createImageBitmap(file);
   try {
+    const ratio = bitmap.width / bitmap.height;
     const scale = Math.min(1, MAX_EDGE_PX / Math.max(bitmap.width, bitmap.height));
-    if (scale === 1 && file.size < 1024 * 1024) return await readAsDataUrl(file);
+    if (scale === 1 && file.size < 1024 * 1024) return { src: await readAsDataUrl(file), ratio };
 
     const canvas = document.createElement('canvas');
     canvas.width = Math.round(bitmap.width * scale);
     canvas.height = Math.round(bitmap.height * scale);
     const ctx = canvas.getContext('2d');
-    if (!ctx) return await readAsDataUrl(file);
+    if (!ctx) return { src: await readAsDataUrl(file), ratio };
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
     const webp = canvas.toDataURL('image/webp', 0.85);
-    return webp.startsWith('data:image/webp') ? webp : canvas.toDataURL('image/jpeg', 0.85);
+    return { src: webp.startsWith('data:image/webp') ? webp : canvas.toDataURL('image/jpeg', 0.85), ratio };
   } finally {
     bitmap.close();
   }
