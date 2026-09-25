@@ -1,4 +1,5 @@
 import {
+  ClipboardPaste,
   Download,
   ImageUp,
   Link,
@@ -27,6 +28,7 @@ interface EditorSidebarProps {
   onMetadataChange: (patch: Partial<MapMetadata>) => void;
   onFloorPlanUpload: (file: File) => void;
   onFloorPlanRemove: () => void;
+  onFloorPlanPaste: () => void;
   onExport: () => void;
   onShare: () => void;
   onSendNearby: () => void;
@@ -212,6 +214,15 @@ export function EditorSidebar(props: EditorSidebarProps) {
           >
             {map.floorPlanImage ? 'Replace floor plan' : 'Upload floor plan'}
           </Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            icon={<ClipboardPaste className="size-4" />}
+            onClick={props.onFloorPlanPaste}
+            title="Paste an image from the clipboard (or press Ctrl+V / ⌘V)"
+          >
+            Paste
+          </Button>
           {map.floorPlanImage && (
             <Button
               variant="ghost"
@@ -223,6 +234,7 @@ export function EditorSidebar(props: EditorSidebarProps) {
             </Button>
           )}
         </div>
+        <p className="text-[10px] text-slate-500">Tip: copy a screenshot and press Ctrl+V / ⌘V here.</p>
         <input
           ref={jsonInput}
           type="file"

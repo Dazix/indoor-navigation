@@ -11,7 +11,7 @@ import { useOrientation } from './hooks/useOrientation';
 import { usePDR } from './hooks/usePDR';
 import { useTensorFlow } from './hooks/useTensorFlow';
 import { normalizeDeg } from './services/geometry';
-import { readFloorPlanFile } from './services/imageFiles';
+import { pickImageFile, readClipboardImage, readFloorPlanFile } from './services/imageFiles';
 import {
   addNode,
   createNodeId,
@@ -235,18 +235,50 @@ export default function App() {
     });
   };
 
-  const handleFloorPlan = (file: File) => {
-    readFloorPlanFile(file)
-      .then((src) => {
-        updateMap((m) => setFloorPlan(m, src));
+  const handleFloorPlan = useCallback(
+    (file: File, successText?: string) => {
+      readFloorPlanFile(file)
+        .then((src) => {
+          updateMap((m) => setFloorPlan(m, src));
+          if (successText) setNotice({ tone: 'info', text: successText });
+        })
+        .catch((err: unknown) => {
+          setNotice({
+            tone: 'error',
+            text: err instanceof Error ? err.message : 'Floor plan could not be loaded',
+          });
+        });
+    },
+    [updateMap],
+  );
+
+  const pasteFloorPlan = () => {
+    readClipboardImage()
+      .then((file) => {
+        handleFloorPlan(file, 'Floor plan pasted from the clipboard.');
       })
       .catch((err: unknown) => {
-        setNotice({
-          tone: 'error',
-          text: err instanceof Error ? err.message : 'Floor plan could not be loaded',
-        });
+        setNotice({ tone: 'error', text: err instanceof Error ? err.message : String(err) });
       });
   };
+
+  // Ctrl+V / ⌘V in the editor pastes a copied image as the floor plan. Text fields and open
+  // dialogs keep the normal paste behaviour.
+  useEffect(() => {
+    if (mode !== 'editor') return;
+    const onPaste = (e: ClipboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (target?.closest('input, textarea, [contenteditable], [role="dialog"]')) return;
+      const file = pickImageFile(e.clipboardData?.files);
+      if (!file) return;
+      e.preventDefault();
+      handleFloorPlan(file, 'Floor plan pasted from the clipboard.');
+    };
+    document.addEventListener('paste', onPaste);
+    return () => {
+      document.removeEventListener('paste', onPaste);
+    };
+  }, [mode, handleFloorPlan]);
 
   // ---- Render ---------------------------------------------------------------------------------
 
@@ -303,6 +335,7 @@ export default function App() {
               updateMap((m) => updateMetadata(m, patch));
             }}
             onFloorPlanUpload={handleFloorPlan}
+            onFloorPlanPaste={pasteFloorPlan}
             onFloorPlanRemove={() => {
               updateMap((m) => setFloorPlan(m, null));
             }}

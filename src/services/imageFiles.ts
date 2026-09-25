@@ -43,3 +43,44 @@ export async function readFloorPlanFile(file: File): Promise<string> {
     bitmap.close();
   }
 }
+
+const EXTENSIONS: Record<string, string> = {
+  'image/png': 'png',
+  'image/jpeg': 'jpg',
+  'image/webp': 'webp',
+  'image/gif': 'gif',
+  'image/svg+xml': 'svg',
+};
+
+function clipboardFile(blob: Blob): File {
+  return new File([blob], `pasted-floor-plan.${EXTENSIONS[blob.type] ?? 'img'}`, { type: blob.type });
+}
+
+/** First image among pasted files (a `paste` event's clipboardData.files), if any. */
+export function pickImageFile(files: ArrayLike<File> | null | undefined): File | null {
+  for (const file of Array.from(files ?? [])) {
+    if (file.type.startsWith('image/')) return file;
+  }
+  return null;
+}
+
+/**
+ * Reads an image from the system clipboard (Async Clipboard API; the browser may ask for permission).
+ * Throws a user-readable error when the API is missing, access is denied or there is no image.
+ */
+export async function readClipboardImage(): Promise<File> {
+  if (typeof (navigator.clipboard as Clipboard | undefined)?.read !== 'function') {
+    throw new Error('This browser cannot read images from the clipboard. Press Ctrl+V / ⌘V instead.');
+  }
+  let items: ClipboardItems;
+  try {
+    items = await navigator.clipboard.read();
+  } catch {
+    throw new Error('Clipboard access was denied. Allow it, or press Ctrl+V / ⌘V instead.');
+  }
+  for (const item of items) {
+    const type = item.types.find((t) => t.startsWith('image/'));
+    if (type) return clipboardFile(await item.getType(type));
+  }
+  throw new Error('There is no image in the clipboard. Copy an image or a screenshot first.');
+}
