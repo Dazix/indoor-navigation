@@ -1,5 +1,6 @@
 import type { MapNode } from '../types/map';
 import type { MatchResult, PixelSource } from '../types/vision';
+import { TO_URL_PARAM } from './mapSharing';
 
 /** Length of the stored MobileNet embedding after downsampling (keeps exported JSON compact). */
 export const EMBEDDING_SIZE = 256;
@@ -78,8 +79,23 @@ export function rankMatches(
   return results.sort((a, b) => b.score - a.score).slice(0, limit);
 }
 
-/** Resolves a scanned QR/barcode or typed code to a node: marker code, node id or exact label. */
+/** Node id from a location link (`…?to=<node id>`), or null when `code` is not such a link. */
+function linkedNodeId(code: string): string | null {
+  if (!/^https?:\/\//i.test(code)) return null;
+  try {
+    return new URL(code).searchParams.get(TO_URL_PARAM);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Resolves a scanned QR/barcode or typed code to a node: location link, marker code, node id or
+ * exact label.
+ */
 export function findNodeByCode(nodes: Record<string, MapNode>, code: string): MapNode | null {
+  const linked = linkedNodeId(code.trim());
+  if (linked !== null) return nodes[linked] ?? null;
   const wanted = code.trim().toUpperCase();
   if (!wanted) return null;
   const all = Object.values(nodes);

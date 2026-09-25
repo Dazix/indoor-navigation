@@ -1,5 +1,5 @@
-import { Check, Copy, QrCode as QrCodeIcon, Share2, Trash2, Video, X } from 'lucide-react';
-import { useState } from 'react';
+import { Check, CircleHelp, Copy, QrCode as QrCodeIcon, Share2, Trash2, Video, X } from 'lucide-react';
+import { useId, useState } from 'react';
 import type { MapNode } from '../../types/map';
 import { Button } from '../ui/Button';
 import { QrCode } from '../ui/QrCode';
@@ -34,6 +34,8 @@ export function NodeDetailsCard({
   const views = node.embeddings.length;
   const [copied, setCopied] = useState(false);
   const [showQr, setShowQr] = useState(false);
+  const [showMarkerHelp, setShowMarkerHelp] = useState(false);
+  const markerHelpId = useId();
   // Another location selected: back to the plain link section.
   const [shownFor, setShownFor] = useState(node.id);
   if (shownFor !== node.id) {
@@ -71,15 +73,46 @@ export function NodeDetailsCard({
       </label>
       <label className="flex flex-col gap-1 text-[11px] font-semibold text-slate-600 dark:text-slate-400">
         Marker code (QR)
-        <input
-          className={`${input} font-mono uppercase`}
-          value={node.markerCode}
-          maxLength={120}
-          onChange={(e) => {
-            onChange({ markerCode: e.target.value.toUpperCase() });
-          }}
-        />
+        <span className="relative">
+          <input
+            className={`${input} pr-8 font-mono uppercase`}
+            value={node.markerCode}
+            maxLength={120}
+            onChange={(e) => {
+              onChange({ markerCode: e.target.value.toUpperCase() });
+            }}
+          />
+          <button
+            type="button"
+            aria-label="What is the marker code?"
+            aria-expanded={showMarkerHelp}
+            aria-controls={markerHelpId}
+            title="What is the marker code?"
+            onClick={(e) => {
+              e.preventDefault(); // do not focus the input through the label
+              setShowMarkerHelp((v) => !v);
+            }}
+            className={`absolute top-1/2 right-1.5 -translate-y-1/2 rounded-full p-0.5 ${
+              showMarkerHelp
+                ? 'text-brand-600'
+                : 'text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
+            }`}
+          >
+            <CircleHelp className="size-4" />
+          </button>
+        </span>
       </label>
+      {showMarkerHelp && (
+        <p
+          id={markerHelpId}
+          className="-mt-1.5 rounded-lg bg-white p-2.5 text-[11px] leading-relaxed text-slate-600 dark:bg-slate-900 dark:text-slate-400"
+        >
+          Text printed as a QR or barcode and stuck up at this spot. Scanning it with the app’s scanner sets
+          this location as where the user is standing, so the route starts from here. Any short code works,
+          e.g. <span className="font-mono">KITCHEN</span>. The QR of the navigation link below works for this
+          too.
+        </p>
+      )}
       <p className="font-mono text-[10px] text-slate-500">
         x {node.x} · y {node.y} · id {node.id}
       </p>

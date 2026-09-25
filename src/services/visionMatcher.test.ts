@@ -71,6 +71,12 @@ describe('findNodeByCode', () => {
     expect(findNodeByCode(nodes, 'kitchen')?.id).toBe('kitchen');
   });
 
+  it('resolves a scanned location link to its node', () => {
+    expect(findNodeByCode(nodes, 'https://example.com/app/?to=kitchen')?.id).toBe('kitchen');
+    expect(findNodeByCode(nodes, ' https://example.com/?map=m.json&to=lobby ')?.id).toBe('lobby');
+    expect(findNodeByCode(nodes, 'https://example.com/?to=ghost')).toBeNull();
+  });
+
   it('returns null for unknown or empty codes', () => {
     expect(findNodeByCode(nodes, 'LOC-NOPE')).toBeNull();
     expect(findNodeByCode(nodes, '  ')).toBeNull();
