@@ -36,6 +36,7 @@ import {
 } from './services/mapSharing';
 import { importMapFromFile, resolveAssetUrl } from './services/mapStorage';
 import { computeRoute, formatDistance } from './services/navigation';
+import { hrefForMode, modeFromHash } from './services/modeRoute';
 import type { MapData, Point } from './types/map';
 import type { AppMode, EditorTool } from './types/navigation';
 import type { P2PRole } from './components/maps/P2PTransferModal';
@@ -77,7 +78,7 @@ export default function App() {
   const { map, activeMapId, updateMap } = library;
   const tf = useTensorFlow();
 
-  const [mode, setMode] = useState<AppMode>('user');
+  const [mode, setMode] = useState<AppMode>(() => modeFromHash(window.location.hash));
   const [tool, setTool] = useState<EditorTool>('select');
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [linkFromId, setLinkFromId] = useState<string | null>(null);
@@ -102,6 +103,28 @@ export default function App() {
   }
   const currentLocation = nav.from && map?.nodes[nav.from] ? nav.from : null;
   const destination = nav.to && map?.nodes[nav.to] ? nav.to : null;
+
+  // Only the editor is in the URL: entering or leaving it adds a history entry, so Back works.
+  const changeMode = (next: AppMode) => {
+    if ((mode === 'editor') !== (next === 'editor')) {
+      window.history.pushState(null, '', hrefForMode(window.location.href, next));
+    }
+    setMode(next);
+  };
+
+  useEffect(() => {
+    const syncFromUrl = () => {
+      const fromUrl = modeFromHash(window.location.hash);
+      // AR has no address of its own, so a URL without the editor hash keeps it open.
+      setMode((prev) => (fromUrl === 'user' && prev === 'ar' ? prev : fromUrl));
+    };
+    window.addEventListener('popstate', syncFromUrl);
+    window.addEventListener('hashchange', syncFromUrl);
+    return () => {
+      window.removeEventListener('popstate', syncFromUrl);
+      window.removeEventListener('hashchange', syncFromUrl);
+    };
+  }, []);
 
   const sensorsEnabled = mode !== 'editor';
   const orientation = useOrientation(sensorsEnabled);
@@ -314,7 +337,7 @@ export default function App() {
       {mode !== 'ar' && (
         <Header
           mode={mode}
-          onModeChange={setMode}
+          onModeChange={changeMode}
           maps={library.maps}
           activeMapId={activeMapId}
           onSwitchMap={(id) => void library.switchMap(id)}
@@ -509,7 +532,7 @@ export default function App() {
       {mode === 'user' && (
         <NavigationBar
           mode={mode}
-          onModeChange={setMode}
+          onModeChange={changeMode}
           onScan={() => {
             setScannerOpen(true);
           }}
