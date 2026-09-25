@@ -1,5 +1,17 @@
-import { Download, ImageUp, Link2, MousePointer2, Plus, Trash2, Upload } from 'lucide-react';
+import {
+  Download,
+  ImageUp,
+  Link,
+  Link2,
+  MousePointer2,
+  Plus,
+  QrCode,
+  Share2,
+  Trash2,
+  Upload,
+} from 'lucide-react';
 import { useRef, type ChangeEvent, type ReactNode } from 'react';
+import { MAP_FILE_ACCEPT } from '../../services/mapSharing';
 import type { MapData, MapMetadata, MapNode } from '../../types/map';
 import type { EditorTool } from '../../types/navigation';
 import { Button } from '../ui/Button';
@@ -16,6 +28,9 @@ interface EditorSidebarProps {
   onFloorPlanUpload: (file: File) => void;
   onFloorPlanRemove: () => void;
   onExport: () => void;
+  onShare: () => void;
+  onSendNearby: () => void;
+  onShareLink: () => void;
   onImport: (file: File) => void;
   onNodeChange: (patch: Partial<Pick<MapNode, 'label' | 'markerCode'>>) => void;
   onRecordWalkthrough: () => void;
@@ -211,7 +226,7 @@ export function EditorSidebar(props: EditorSidebarProps) {
         <input
           ref={jsonInput}
           type="file"
-          accept="application/json,.json"
+          accept={MAP_FILE_ACCEPT}
           className="hidden"
           onChange={(e) => {
             pickFile(e, props.onImport);
@@ -237,6 +252,41 @@ export function EditorSidebar(props: EditorSidebarProps) {
             Import as new
           </Button>
         </div>
+        <Button
+          variant="primary"
+          size="sm"
+          fullWidth
+          icon={<Share2 className="size-4" />}
+          onClick={props.onShare}
+        >
+          Share map
+        </Button>
+        <div className="flex gap-2">
+          <Button
+            variant="secondary"
+            size="sm"
+            fullWidth
+            icon={<QrCode className="size-4" />}
+            onClick={props.onSendNearby}
+          >
+            Nearby phone
+          </Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            fullWidth
+            icon={<Link className="size-4" />}
+            onClick={props.onShareLink}
+          >
+            Link & QR
+          </Button>
+        </div>
+        <p className="text-[10px] leading-relaxed text-slate-500">
+          Every option carries the floor plan and all learned views. <b>Share map</b> opens the share sheet
+          (AirDrop, messaging, e-mail). <b>Nearby phone</b> sends the map straight to a phone on the same
+          Wi-Fi by scanning QR codes. <b>Link & QR</b> makes a printable QR code for a map JSON you uploaded
+          somewhere public.
+        </p>
       </section>
     </aside>
   );

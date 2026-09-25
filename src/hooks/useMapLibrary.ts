@@ -6,6 +6,7 @@ import {
   createMapId,
   deleteMap as deleteStoredMap,
   EMPTY_LIBRARY,
+  findBySource,
   LIBRARY_STORAGE_KEY,
   parseLibrary,
   readLegacyMap,
@@ -143,15 +144,49 @@ export function useMapLibrary() {
   }, []);
 
   const addMap = useCallback(
-    async (map: MapData) => {
+    async (map: MapData, sourceUrl?: string) => {
       await flush();
       const id = createMapId();
       const named = withName(map, uniqueName(library, map.metadata.name));
       await writeMap(id, named);
-      setLibrary((lib) => addToLibrary(lib, { id, name: named.metadata.name, updatedAt: Date.now() }));
+      setLibrary((lib) =>
+        addToLibrary(lib, {
+          id,
+          name: named.metadata.name,
+          updatedAt: Date.now(),
+          ...(sourceUrl ? { sourceUrl } : {}),
+        }),
+      );
       return id;
     },
     [flush, library, setLibrary],
+  );
+
+  /** Adds a map loaded from a share link, or overwrites the map previously loaded from the same link. */
+  const importFromUrl = useCallback(
+    async (map: MapData, sourceUrl: string) => {
+      const existing = findBySource(library, sourceUrl);
+      if (!existing) return addMap(map, sourceUrl);
+      if (pendingRef.current?.id === existing.id) {
+        clearTimeout(timerRef.current);
+        pendingRef.current = null;
+      } else {
+        await flush();
+      }
+      const others = { ...library, maps: library.maps.filter((m) => m.id !== existing.id) };
+      const named = withName(map, uniqueName(others, map.metadata.name));
+      await writeMap(existing.id, named);
+      if (active?.id === existing.id) {
+        savedRef.current = named;
+        setActive({ id: existing.id, map: named });
+      }
+      setLibrary((lib) => ({
+        ...updateSummary(lib, existing.id, { name: named.metadata.name, updatedAt: Date.now() }),
+        activeMapId: existing.id,
+      }));
+      return existing.id;
+    },
+    [active?.id, addMap, flush, library, setLibrary],
   );
 
   const switchMap = useCallback(
@@ -205,6 +240,8 @@ export function useMapLibrary() {
     [flush, library.maps.length, setLibrary],
   );
 
+  const findSource = useCallback((url: string) => findBySource(library, url), [library]);
+
   const status: LibraryStatus = error ? 'error' : active?.id === activeId ? 'ready' : 'loading';
 
   return {
@@ -218,6 +255,8 @@ export function useMapLibrary() {
     switchMap,
     createMap,
     importMap: addMap,
+    importFromUrl,
+    findBySource: findSource,
     duplicateActive,
     renameMap,
     deleteMap,

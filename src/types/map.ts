@@ -45,6 +45,8 @@ export interface MapSummary {
   id: string;
   name: string;
   updatedAt: number;
+  /** URL the map was loaded from via a share link; loading the same link again updates this map. */
+  sourceUrl?: string;
 }
 
 export interface MapLibrary {

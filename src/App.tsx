@@ -1,9 +1,10 @@
 import { Loader2, Target, X } from 'lucide-react';
-import { lazy, Suspense, useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { EditorSidebar } from './components/editor/EditorSidebar';
 import { Header } from './components/layout/Header';
 import { InteractiveMap } from './components/map/InteractiveMap';
-import { MapManagerModal } from './components/maps/MapManagerModal';
+import { MapManagerModal, ShareLinkSection } from './components/maps/MapManagerModal';
+import { Modal } from './components/ui/Modal';
 import { NavigationBar } from './components/ui/NavigationBar';
 import { useMapLibrary } from './hooks/useMapLibrary';
 import { useOrientation } from './hooks/useOrientation';
@@ -22,20 +23,42 @@ import {
   updateMetadata,
   updateNode,
 } from './services/mapEditing';
-import { exportMapToFile, importMapFromFile } from './services/mapStorage';
+import {
+  exportMapToFile,
+  fetchSharedMap,
+  MAP_URL_PARAM,
+  resolveMapUrl,
+  shareMap,
+} from './services/mapSharing';
+import { importMapFromFile } from './services/mapStorage';
 import { computeRoute, formatDistance } from './services/navigation';
 import type { MapData, Point } from './types/map';
 import type { AppMode, EditorTool } from './types/navigation';
+import type { P2PRole } from './components/maps/P2PTransferModal';
 
 const ARCanvas = lazy(() => import('./components/ar/ARCanvas'));
 const VisionScannerModal = lazy(() => import('./components/scanner/VisionScannerModal'));
 const WalkthroughModal = lazy(() => import('./components/editor/WalkthroughModal'));
+const P2PTransferModal = lazy(() => import('./components/maps/P2PTransferModal'));
 
 type Notice = { tone: 'error' | 'info'; text: string };
 
 function defaultStart(map: MapData): string | null {
   return 'entrance' in map.nodes ? 'entrance' : (Object.keys(map.nodes)[0] ?? null);
 }
+
+/** Reads the `?map=` share link parameter once and removes it, so a reload does not import again. */
+function takeMapLinkParam(): string | null {
+  const url = new URL(window.location.href);
+  const value = url.searchParams.get(MAP_URL_PARAM);
+  if (value === null) return null;
+  url.searchParams.delete(MAP_URL_PARAM);
+  window.history.replaceState(window.history.state, '', url.href);
+  return value;
+}
+
+// Read at module load, before the first render, so StrictMode double renders cannot lose it.
+const INITIAL_MAP_LINK = takeMapLinkParam();
 
 function FullScreenMessage({ children }: { children: ReactNode }) {
   return (
@@ -57,7 +80,10 @@ export default function App() {
   const [scannerOpen, setScannerOpen] = useState(false);
   const [walkthroughOpen, setWalkthroughOpen] = useState(false);
   const [managerOpen, setManagerOpen] = useState(false);
+  const [shareLinkOpen, setShareLinkOpen] = useState(false);
   const [notice, setNotice] = useState<Notice | null>(null);
+  const [p2pRole, setP2PRole] = useState<P2PRole | null>(null);
+  const mapLinkHandled = useRef(false);
 
   // Location and destination belong to one map; reset them when another map becomes active.
   const [nav, setNav] = useState<{ mapId: string | null; from: string | null; to: string | null }>({
@@ -91,6 +117,47 @@ export default function App() {
       clearTimeout(timer);
     };
   }, [notice]);
+
+  // Share link (?map=<url>): once the library is ready, add the linked map or update the earlier copy.
+  const { status: libraryStatus, findBySource, importFromUrl } = library;
+  useEffect(() => {
+    if (INITIAL_MAP_LINK === null || mapLinkHandled.current || libraryStatus !== 'ready') return;
+    mapLinkHandled.current = true;
+    const link = INITIAL_MAP_LINK;
+    void (async () => {
+      const url = resolveMapUrl(link, new URL(import.meta.env.BASE_URL, window.location.origin).href);
+      if (!url) {
+        setNotice({ tone: 'error', text: 'The map link is not a valid http(s) URL or path.' });
+        return;
+      }
+      const result = await fetchSharedMap(url);
+      if (!result.ok) {
+        setNotice({ tone: 'error', text: `Map link failed: ${result.error}` });
+        return;
+      }
+      const existing = findBySource(url);
+      if (
+        existing &&
+        !window.confirm(
+          `Update “${existing.name}” from the link? Local changes to this map will be replaced.`,
+        )
+      ) {
+        return;
+      }
+      try {
+        await importFromUrl(result.data, url);
+        setNotice({
+          tone: 'info',
+          text: `${existing ? 'Updated' : 'Added'} “${result.data.metadata.name}” from the link.`,
+        });
+      } catch (err) {
+        setNotice({
+          tone: 'error',
+          text: `Map link failed: ${err instanceof Error ? err.message : String(err)}`,
+        });
+      }
+    })();
+  }, [libraryStatus, findBySource, importFromUrl]);
 
   const { reset: resetSteps } = pdr;
 
@@ -240,7 +307,30 @@ export default function App() {
               updateMap((m) => setFloorPlan(m, null));
             }}
             onExport={() => {
-              exportMapToFile(map);
+              void exportMapToFile(map);
+            }}
+            onSendNearby={() => {
+              setP2PRole('send');
+            }}
+            onShareLink={() => {
+              setShareLinkOpen(true);
+            }}
+            onShare={() => {
+              shareMap(map)
+                .then((outcome) => {
+                  if (outcome === 'downloaded') {
+                    setNotice({
+                      tone: 'info',
+                      text: 'This browser cannot share files, so the map was downloaded instead.',
+                    });
+                  }
+                })
+                .catch((err: unknown) => {
+                  setNotice({
+                    tone: 'error',
+                    text: `Sharing failed: ${err instanceof Error ? err.message : String(err)}`,
+                  });
+                });
             }}
             onImport={handleImport}
             onNodeChange={(patch) => {
@@ -395,7 +485,28 @@ export default function App() {
             }}
           />
         )}
+        {p2pRole && (
+          <P2PTransferModal
+            role={p2pRole}
+            map={map}
+            onReceived={library.importMap}
+            onClose={() => {
+              setP2PRole(null);
+            }}
+          />
+        )}
       </Suspense>
+
+      <Modal
+        open={shareLinkOpen}
+        onClose={() => {
+          setShareLinkOpen(false);
+        }}
+        title="Link & QR code"
+        subtitle="Anyone who opens the link or scans the code gets this map"
+      >
+        <ShareLinkSection initialUrl={library.maps.find((m) => m.id === activeMapId)?.sourceUrl ?? ''} />
+      </Modal>
 
       <MapManagerModal
         open={managerOpen}
@@ -410,6 +521,12 @@ export default function App() {
         onRename={library.renameMap}
         onDelete={library.deleteMap}
         onImport={handleImport}
+        onSendNearby={() => {
+          setP2PRole('send');
+        }}
+        onReceiveNearby={() => {
+          setP2PRole('receive');
+        }}
       />
     </div>
   );

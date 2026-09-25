@@ -111,23 +111,6 @@ export async function importMapFromFile(file: File): Promise<ParseResult> {
   return parseMapData(json);
 }
 
-export function exportMapToFile(map: MapData): void {
-  const blob = new Blob([JSON.stringify(map, null, 2)], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  const slug = map.metadata.name
-    .normalize('NFD')
-    .replace(/[^\w]+/g, '-')
-    .replace(/^-|-$/g, '')
-    .toLowerCase();
-  a.href = url;
-  a.download = `${slug || 'indoor-map'}-${new Date().toISOString().slice(0, 10)}.json`;
-  a.click();
-  setTimeout(() => {
-    URL.revokeObjectURL(url);
-  }, 0);
-}
-
 /** Resolves a floor plan reference so relative asset paths work under the GitHub Pages sub-path. */
 export function resolveAssetUrl(src: string): string {
   if (/^(data:|https?:|blob:|\/)/.test(src)) return src;

@@ -4,6 +4,7 @@ import { parseMapData } from './mapStorage';
 import {
   addToLibrary,
   createBlankMap,
+  findBySource,
   parseLibrary,
   removeFromLibrary,
   uniqueName,
@@ -63,5 +64,13 @@ describe('map library', () => {
   it('validates the stored library index', () => {
     expect(parseLibrary(library)).toEqual(library);
     expect(parseLibrary({ activeMapId: 1, maps: [] })).toBeNull();
+  });
+
+  it('keeps the share link a map was loaded from and finds it again', () => {
+    const url = 'https://example.com/hq.json';
+    const withSource = addToLibrary(library, { id: 'd', name: 'Shared', updatedAt: 4, sourceUrl: url });
+    expect(parseLibrary(withSource)).toEqual(withSource);
+    expect(findBySource(withSource, url)?.id).toBe('d');
+    expect(findBySource(library, url)).toBeUndefined();
   });
 });

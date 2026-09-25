@@ -10,7 +10,14 @@ export const EMPTY_LIBRARY: MapLibrary = { activeMapId: null, maps: [] };
 
 const MapLibrarySchema = z.object({
   activeMapId: z.string().nullable(),
-  maps: z.array(z.object({ id: z.string().min(1), name: z.string(), updatedAt: z.number() })),
+  maps: z.array(
+    z.object({
+      id: z.string().min(1),
+      name: z.string(),
+      updatedAt: z.number(),
+      sourceUrl: z.string().optional(),
+    }),
+  ),
 });
 
 export function parseLibrary(raw: unknown): MapLibrary | null {
@@ -50,6 +57,10 @@ export function addToLibrary(library: MapLibrary, summary: MapSummary, activate 
     activeMapId: activate ? summary.id : library.activeMapId,
     maps: [...library.maps.filter((m) => m.id !== summary.id), summary],
   };
+}
+
+export function findBySource(library: MapLibrary, sourceUrl: string): MapSummary | undefined {
+  return library.maps.find((m) => m.sourceUrl === sourceUrl);
 }
 
 export function updateSummary(

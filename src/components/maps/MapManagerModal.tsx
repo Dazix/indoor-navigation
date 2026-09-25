@@ -1,8 +1,10 @@
-import { Check, Copy, Pencil, Plus, Trash2, Upload } from 'lucide-react';
+import { Check, Copy, Download, Link, Pencil, Plus, Send, Trash2, Upload } from 'lucide-react';
 import { useRef, useState } from 'react';
+import { buildShareLink, MAP_FILE_ACCEPT, resolveMapUrl } from '../../services/mapSharing';
 import type { MapSummary } from '../../types/map';
 import { Button } from '../ui/Button';
 import { Modal } from '../ui/Modal';
+import { QrCode } from '../ui/QrCode';
 
 interface MapManagerModalProps {
   open: boolean;
@@ -15,6 +17,8 @@ interface MapManagerModalProps {
   onRename: (id: string, name: string) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
   onImport: (file: File) => void;
+  onSendNearby: () => void;
+  onReceiveNearby: () => void;
 }
 
 const input =
@@ -34,6 +38,8 @@ export function MapManagerModal({
   onRename,
   onDelete,
   onImport,
+  onSendNearby,
+  onReceiveNearby,
 }: MapManagerModalProps) {
   const [editing, setEditing] = useState<{ id: string; name: string } | null>(null);
   const [newName, setNewName] = useState('');
@@ -214,7 +220,7 @@ export function MapManagerModal({
         <input
           ref={fileInput}
           type="file"
-          accept="application/json,.json"
+          accept={MAP_FILE_ACCEPT}
           className="hidden"
           onChange={(e) => {
             const file = e.target.files?.[0];
@@ -234,6 +240,103 @@ export function MapManagerModal({
           Import map from JSON
         </Button>
       </section>
+
+      <section className="space-y-2 border-t border-slate-200 p-4 dark:border-slate-800">
+        <h3 className="text-[11px] font-bold tracking-wider text-slate-400 uppercase">Nearby phone</h3>
+        <p className="text-[11px] text-slate-500">
+          Transfer a complete map directly between two phones on the same Wi-Fi by scanning QR codes.
+        </p>
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <Button
+            variant="secondary"
+            size="sm"
+            fullWidth
+            icon={<Send className="size-4" />}
+            onClick={() => {
+              onClose();
+              onSendNearby();
+            }}
+          >
+            Send active map
+          </Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            fullWidth
+            icon={<Download className="size-4" />}
+            onClick={() => {
+              onClose();
+              onReceiveNearby();
+            }}
+          >
+            Receive a map
+          </Button>
+        </div>
+      </section>
+
+      <ShareLinkSection />
     </Modal>
+  );
+}
+
+/** Turns a public map JSON URL into an app link and a printable QR code. */
+export function ShareLinkSection({ initialUrl = '' }: { initialUrl?: string }) {
+  const [source, setSource] = useState(initialUrl);
+  const [copied, setCopied] = useState(false);
+  const appUrl = new URL(import.meta.env.BASE_URL, window.location.origin).href;
+  const mapUrl = source.trim() ? resolveMapUrl(source, appUrl) : null;
+  const link = mapUrl ? buildShareLink(source.trim(), appUrl) : null;
+
+  return (
+    <section className="space-y-2 border-t border-slate-200 p-4 dark:border-slate-800">
+      <h3 className="text-[11px] font-bold tracking-wider text-slate-400 uppercase">Share via link</h3>
+      <ol className="list-decimal space-y-0.5 pl-4 text-[11px] text-slate-500">
+        <li>Save the map with Export JSON.</li>
+        <li>
+          Upload the file somewhere public: this app’s <code>public/maps/</code> folder, a GitHub gist (raw
+          link) or S3. Google Drive and Dropbox links do not work.
+        </li>
+        <li>Paste its URL below. You get a link and a QR code to print.</li>
+      </ol>
+      <p className="text-[11px] text-slate-500">
+        Opening the link adds the map, and opening it again later updates it. The map is public, camera
+        thumbnails included. To send a map to one phone without uploading anything, use Nearby phone.
+      </p>
+      <input
+        className={`${input} w-full`}
+        placeholder="maps/office.json or https://…/map.json"
+        value={source}
+        aria-label="Map JSON URL"
+        onChange={(e) => {
+          setSource(e.target.value);
+          setCopied(false);
+        }}
+      />
+      {source.trim() && !link && <p className="text-[11px] text-red-600">Enter an https:// URL or a path.</p>}
+      {link && (
+        <div className="flex flex-col items-center gap-2 sm:flex-row sm:items-start">
+          <QrCode
+            value={link}
+            label="QR code of the map link"
+            className="w-40 shrink-0 border border-slate-200"
+          />
+          <div className="flex min-w-0 flex-1 flex-col gap-2">
+            <p className="text-[11px] break-all text-slate-600 dark:text-slate-300">{link}</p>
+            <Button
+              variant="secondary"
+              size="sm"
+              icon={copied ? <Check className="size-4" /> : <Link className="size-4" />}
+              onClick={() => {
+                void navigator.clipboard.writeText(link).then(() => {
+                  setCopied(true);
+                });
+              }}
+            >
+              {copied ? 'Link copied' : 'Copy link'}
+            </Button>
+          </div>
+        </div>
+      )}
+    </section>
   );
 }

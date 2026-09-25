@@ -25,12 +25,12 @@ GitHub Pages.
 
 ## How it works without a backend
 
-| Data                                              | Where it lives                                         |
-| ------------------------------------------------- | ------------------------------------------------------ |
-| Map index (names, active map)                     | `localStorage`                                         |
-| Map bodies (nodes, corridors, views, floor plans) | IndexedDB (much more space than `localStorage`)        |
-| MobileNet v2 weights                              | Vendored in `public/models/`, cached by the SW         |
-| Sharing between devices                           | Export JSON in the Editor, import it on another device |
+| Data                                              | Where it lives                                      |
+| ------------------------------------------------- | --------------------------------------------------- |
+| Map index (names, active map)                     | `localStorage`                                      |
+| Map bodies (nodes, corridors, views, floor plans) | IndexedDB (much more space than `localStorage`)     |
+| MobileNet v2 weights                              | Vendored in `public/models/`, cached by the SW      |
+| Sharing between devices                           | Share / export file, `?map=` link, or direct WebRTC |
 
 On first start the app moves over any map saved by the original single-file prototype
 (`localStorage` key `indoor_nav_map_data_v3`). If there is none, it loads `public/default-map.json`.
@@ -102,6 +102,39 @@ the model load correctly from the Pages sub-path. Locally the base is `/`.
 8. **Export JSON.** This saves the whole map, learned views included. Import it on other devices through
    **Import as new** or the maps menu.
 
+## Sharing maps
+
+Every sharing path transfers the complete map: settings, locations, corridors, rooms, learned views and the
+floor plan. A floor plan that is only referenced (a bundled asset or an external URL) is embedded into the
+file as a data URL.
+
+- **Share map** (Editor). Opens the system share sheet (AirDrop, messaging apps, e-mail) with the map file.
+  The other phone opens the file and imports it with **Import as new**. Browsers that cannot share files
+  download it instead.
+- **Link / QR code.** `https://<host>/indoor-navigation/?map=<url>` downloads the JSON, validates it and
+  adds it as a new map. Opening the same link again updates that map instead of adding a copy. The URL can
+  be:
+  - a path inside this app, e.g. `?map=maps/office.json` for a file committed to `public/maps/`. Deployed
+    files are also precached for offline use.
+  - any public `https://` URL that allows cross-origin reads, such as a raw gist, S3 or another GitHub Pages
+    site. Google Drive and Dropbox share links do not work.
+
+  **Maps → Share via link** turns the URL into the app link and a QR code you can print, for example for the
+  reception desk. Anything published this way is public, camera thumbnails of learned views included.
+
+- **Nearby phone (WebRTC).** **Maps → Nearby phone** sends a map directly between two phones:
+  1. The sending phone shows a QR code.
+  2. The receiving phone scans it and shows its own code.
+  3. The sender scans that code.
+
+  The map then travels over a WebRTC data channel. No STUN/TURN or signalling server is used, so both phones
+  must be on the same network. Guest and corporate Wi-Fi with client isolation blocks the connection. QR
+  reading uses `BarcodeDetector`, or jsQR where it is missing (iOS Safari). A text-code fallback exists for
+  devices without a camera.
+
+Views recorded on one phone work on others, but accuracy drops with a very different camera or lighting.
+Recording a walkthrough with two different phones helps.
+
 ## Project structure
 
 ```text
@@ -109,9 +142,9 @@ src/
 ├── components/   ar/, editor/, layout/, map/, maps/, scanner/, ui/
 ├── hooks/        useCamera, useOrientation, usePDR, useTensorFlow, useLocalStorage, useMapLibrary
 ├── services/     pathfinding (A*), navigation, geometry, visionMatcher, pdr, mapStorage (Zod),
-│                 mapLibrary (IndexedDB), mapEditing, imageFiles
+│                 mapLibrary (IndexedDB), mapEditing, imageFiles, mapSharing, p2pSignal, p2pTransfer (WebRTC)
 └── types/        map, vision, navigation, sensors.d.ts
-public/           default-map.json, sample-floorplan.svg, models/mobilenet_v2_050/, icons
+public/           default-map.json, sample-floorplan.svg, maps/ (shared map JSON), models/mobilenet_v2_050/, icons
 ```
 
 ## Limitations
@@ -120,7 +153,7 @@ public/           default-map.json, sample-floorplan.svg, models/mobilenet_v2_05
 - PDR assumes an average step of 0.7 m and that you follow the route, so rescan now and then.
 - Views recorded with the fallback colour descriptor (used when the model cannot load) cannot be compared
   with MobileNet views. Record them again once the model is available.
-- A map's data lives in a single browser until you export it. Browsers may clear site data under storage
+- A map's data lives in a single browser until you share or export it. Browsers may clear site data under storage
   pressure, although the app asks for persistent storage.
 
 ## Licenses
