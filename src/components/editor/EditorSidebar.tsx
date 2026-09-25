@@ -9,6 +9,7 @@ import {
   QrCode,
   RotateCcw,
   RotateCw,
+  Ruler,
   Scan,
   Share2,
   Trash2,
@@ -22,7 +23,8 @@ import {
   metersPerUnitForLongSide,
 } from '../../services/mapEditing';
 import { buildNodeLink, MAP_FILE_ACCEPT } from '../../services/mapSharing';
-import type { MapData, MapMetadata, MapNode } from '../../types/map';
+import { distance } from '../../services/geometry';
+import type { MapData, MapMetadata, MapNode, Point } from '../../types/map';
 import type { EditorTool } from '../../types/navigation';
 import { LocationSearch } from '../map/LocationSearch';
 import { Button } from '../ui/Button';
@@ -58,6 +60,11 @@ interface EditorSidebarProps {
   mapSourceUrl?: string;
   /** A location picked in the search field. */
   onFindNode: (nodeId: string) => void;
+  /** Ends of the line drawn with the measure tool (0–2 points). */
+  measureLine: Point[];
+  /** Sets the scale so the measured line is `meters` long. */
+  onApplyMeasure: (meters: number) => void;
+  onClearMeasure: () => void;
 }
 
 const TOOLS: { id: EditorTool; label: string; icon: ReactNode; hint: string }[] = [
@@ -84,6 +91,12 @@ const TOOLS: { id: EditorTool; label: string; icon: ReactNode; hint: string }[] 
     label: 'Delete',
     icon: <Trash2 className="size-4" />,
     hint: 'Tap a location, a corridor or a bend point to delete it.',
+  },
+  {
+    id: 'measure',
+    label: 'Measure',
+    icon: <Ruler className="size-4" />,
+    hint: 'Tap both ends of a wall or anything else you know the real length of. Zoom in for precision.',
   },
 ];
 
@@ -115,7 +128,7 @@ export function EditorSidebar(props: EditorSidebarProps) {
 
       <section>
         <h2 className={heading}>Tools</h2>
-        <div className="grid grid-cols-4 gap-1 rounded-xl bg-slate-100 p-1 dark:bg-slate-800" role="toolbar">
+        <div className="grid grid-cols-5 gap-1 rounded-xl bg-slate-100 p-1 dark:bg-slate-800" role="toolbar">
           {TOOLS.map((t) => (
             <button
               key={t.id}
@@ -140,6 +153,14 @@ export function EditorSidebar(props: EditorSidebarProps) {
             ? `Connecting from “${linkFrom.label}” — tap the second location.`
             : activeTool?.hint}
         </p>
+        {tool === 'measure' && (
+          <MeasurePanel
+            line={props.measureLine}
+            metersPerUnit={metersPerUnit}
+            onApply={props.onApplyMeasure}
+            onClear={props.onClearMeasure}
+          />
+        )}
         <p className="mt-1 text-[10px] text-slate-500">
           Scroll or pinch to zoom, drag an empty spot to pan. Zoomed in, points snap more finely.
         </p>
@@ -425,6 +446,72 @@ export function EditorSidebar(props: EditorSidebarProps) {
 
 function formatNumber(v: number): string {
   return String(Math.round(v * 10) / 10);
+}
+
+/** Measure tool: the drawn line's length at the current scale and the real length to set. */
+function MeasurePanel({
+  line,
+  metersPerUnit,
+  onApply,
+  onClear,
+}: {
+  line: Point[];
+  metersPerUnit: number;
+  onApply: (meters: number) => void;
+  onClear: () => void;
+}) {
+  const [a, b] = line;
+  const [meters, setMeters] = useState('');
+  if (!a || !b) {
+    return (
+      <p className="mt-2 rounded-xl bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:bg-amber-950/50 dark:text-amber-200">
+        {a ? 'Now tap the other end.' : 'Tap the first end of the line.'}
+      </p>
+    );
+  }
+  const current = distance(a, b) * metersPerUnit;
+  return (
+    <form
+      className="mt-2 flex flex-col gap-2 rounded-xl bg-amber-50 p-3 dark:bg-amber-950/50"
+      onSubmit={(e) => {
+        e.preventDefault();
+        onApply(Number(meters.replace(',', '.')));
+      }}
+    >
+      <p className="text-xs text-amber-900 dark:text-amber-100">
+        The line is <strong>{current.toFixed(2)} m</strong> at the current scale.
+      </p>
+      <label className="flex min-w-0 flex-col gap-1 text-[11px] font-semibold text-slate-600 dark:text-slate-400">
+        Real length (m)
+        <input
+          className={input}
+          type="text"
+          inputMode="decimal"
+          autoFocus
+          placeholder={current.toFixed(2)}
+          value={meters}
+          onChange={(e) => {
+            setMeters(e.target.value);
+          }}
+        />
+      </label>
+      <div className="flex items-center gap-2">
+        <Button type="submit" size="sm" disabled={!(Number(meters.replace(',', '.')) > 0)}>
+          Apply scale
+        </Button>
+        <button
+          type="button"
+          className="text-xs font-semibold text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
+          onClick={onClear}
+        >
+          Clear
+        </button>
+      </div>
+      <p className="text-[10px] leading-relaxed text-slate-500">
+        The scale is the same in both directions, so check the map aspect first (Fit to image).
+      </p>
+    </form>
+  );
 }
 
 /**

@@ -1,6 +1,10 @@
 import type { MapData, MapMetadata, MapNode, Point } from '../types/map';
 import type { EmbeddingSample } from '../types/vision';
 import { mapBends, sameEdge } from './corridors';
+import { distance } from './geometry';
+
+/** Largest scale the map format accepts (see `metersPerUnit` in mapStorage). */
+const MAX_METERS_PER_UNIT = 100;
 
 /** Pure, immutable editor operations on a map. */
 
@@ -168,6 +172,17 @@ export function longSideMeters(metadata: MapMetadata): number {
 /** Scale (m / unit) that makes the longer map side `meters` long. */
 export function metersPerUnitForLongSide(metadata: MapMetadata, meters: number): number {
   return meters / Math.max(metadata.width, metadata.height);
+}
+
+/**
+ * Scale (m / unit) at which the line from `a` to `b` is `meters` long — e.g. a wall measured in
+ * reality. Null for a zero-length line or a length that gives no valid scale.
+ */
+export function metersPerUnitForSegment(a: Point, b: Point, meters: number): number | null {
+  const units = distance(a, b);
+  if (!(units > 0) || !(meters > 0)) return null;
+  const mpu = meters / units;
+  return mpu > 0 && mpu <= MAX_METERS_PER_UNIT ? mpu : null;
 }
 
 /** Clamps a point into the map and rounds it to `step` units. */
