@@ -185,7 +185,7 @@ export function extractFallbackEmbedding(source: PixelSource): number[] {
 }
 
 /** Small JPEG preview of the current frame for the viewpoint gallery. */
-export function captureThumbnail(source: PixelSource, width = 120, height = 90): string {
+export function captureThumbnail(source: PixelSource, width = 90, height = 120): string {
   const canvas = document.createElement('canvas');
   canvas.width = width;
   canvas.height = height;

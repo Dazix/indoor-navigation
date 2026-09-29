@@ -1,6 +1,7 @@
 import { Loader2, QrCode, Sparkles } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { CAMERA_STATUS_TEXT, useCamera } from '../../hooks/useCamera';
+import { CAMERA_STATUS_TEXT, PORTRAIT_CONSTRAINTS, useCamera } from '../../hooks/useCamera';
+import { CameraLensPicker } from './CameraLensPicker';
 import { useTensorFlow } from '../../hooks/useTensorFlow';
 import {
   EMBEDDING_SIZE,
@@ -42,7 +43,14 @@ export default function VisionScannerModal({ onClose, map, onDetected, lastFix }
   const [ambiguous, setAmbiguous] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [manualCode, setManualCode] = useState('');
-  const { videoRef, status: cameraStatus, retry } = useCamera(true);
+  const {
+    videoRef,
+    status: cameraStatus,
+    retry,
+    devices,
+    currentDeviceId,
+    selectDevice,
+  } = useCamera(true, PORTRAIT_CONSTRAINTS);
   const { status: modelStatus, engine, load, embed } = useTensorFlow();
 
   const trainedNodes = useMemo(() => Object.values(map.nodes).filter(isTrained), [map.nodes]);
@@ -182,8 +190,9 @@ export default function VisionScannerModal({ onClose, map, onDetected, lastFix }
 
   return (
     <Modal open onClose={onClose} title="Where am I?" tone="dark" headerExtra={tabs}>
-      <div className="relative flex aspect-[4/3] max-h-[45dvh] w-full items-center justify-center overflow-hidden bg-black">
+      <div className="relative mx-auto flex aspect-[3/4] h-[55dvh] max-w-full items-center justify-center overflow-hidden bg-black">
         <video ref={videoRef} autoPlay playsInline muted className="size-full object-cover" />
+        <CameraLensPicker devices={devices} currentDeviceId={currentDeviceId} onSelect={selectDevice} />
 
         {cameraStatus !== 'ready' && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 p-6 text-center text-sm text-slate-300">

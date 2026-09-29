@@ -1,6 +1,7 @@
 import { Camera, Loader2, Pause, Trash2, Video } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { CAMERA_STATUS_TEXT, useCamera } from '../../hooks/useCamera';
+import { CAMERA_STATUS_TEXT, PORTRAIT_CONSTRAINTS, useCamera } from '../../hooks/useCamera';
+import { CameraLensPicker } from '../scanner/CameraLensPicker';
 import { useTensorFlow } from '../../hooks/useTensorFlow';
 import {
   coverageReport,
@@ -42,7 +43,14 @@ function sampleId(): string {
 export default function WalkthroughModal({ node, onClose, onSave }: WalkthroughModalProps) {
   const [samples, setSamples] = useState<EmbeddingSample[]>(node.embeddings);
   const [recording, setRecording] = useState(false);
-  const { videoRef, status: cameraStatus, retry } = useCamera(true);
+  const {
+    videoRef,
+    status: cameraStatus,
+    retry,
+    devices,
+    currentDeviceId,
+    selectDevice,
+  } = useCamera(true, PORTRAIT_CONSTRAINTS);
   const { status: modelStatus, engine, load, embed } = useTensorFlow();
   const busy = useRef(false);
 
@@ -122,8 +130,9 @@ export default function WalkthroughModal({ node, onClose, onSave }: WalkthroughM
         </>
       }
     >
-      <div className="relative flex aspect-[4/3] max-h-[40dvh] w-full items-center justify-center overflow-hidden bg-black">
+      <div className="relative mx-auto flex aspect-[3/4] h-[50dvh] max-w-full items-center justify-center overflow-hidden bg-black">
         <video ref={videoRef} autoPlay playsInline muted className="size-full object-cover" />
+        <CameraLensPicker devices={devices} currentDeviceId={currentDeviceId} onSelect={selectDevice} />
         {cameraStatus !== 'ready' ? (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 p-6 text-center text-sm text-slate-300">
             {cameraStatus === 'starting' && <Loader2 className="size-6 animate-spin" />}
@@ -223,7 +232,7 @@ export default function WalkthroughModal({ node, onClose, onSave }: WalkthroughM
             {samples.map((sample, i) => (
               <li
                 key={sample.id}
-                className="group relative aspect-[4/3] overflow-hidden rounded-xl border border-slate-700 bg-slate-800"
+                className="group relative aspect-[3/4] overflow-hidden rounded-xl border border-slate-700 bg-slate-800"
               >
                 <img src={sample.thumbnail} alt={`View ${i + 1}`} className="size-full object-cover" />
                 <span className="absolute bottom-0.5 left-1 rounded bg-black/60 px-1 font-mono text-[9px] text-white/90">
