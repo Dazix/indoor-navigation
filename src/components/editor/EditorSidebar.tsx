@@ -12,7 +12,9 @@ import {
   Ruler,
   Scan,
   Share2,
+  Redo2,
   Trash2,
+  Undo2,
   Upload,
 } from 'lucide-react';
 import { useState, useRef, type ChangeEvent, type ReactNode } from 'react';
@@ -34,6 +36,10 @@ interface EditorSidebarProps {
   map: MapData;
   tool: EditorTool;
   onToolChange: (tool: EditorTool) => void;
+  canUndo: boolean;
+  canRedo: boolean;
+  onUndo: () => void;
+  onRedo: () => void;
   selectedNode: MapNode | null;
   linkFrom: MapNode | null;
   message: { tone: 'error' | 'info'; text: string } | null;
@@ -104,6 +110,27 @@ const heading = 'mb-2 text-[11px] font-bold tracking-wider text-slate-400 upperc
 const input =
   'w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-sm outline-none focus:border-brand-500 dark:border-slate-700 dark:bg-slate-800';
 
+function HistoryButton(props: {
+  label: string;
+  shortcut: string;
+  icon: ReactNode;
+  disabled: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={props.label}
+      title={`${props.label} (${props.shortcut})`}
+      disabled={props.disabled}
+      onClick={props.onClick}
+      className="rounded-lg p-1.5 text-slate-600 hover:bg-slate-100 disabled:opacity-30 disabled:hover:bg-transparent dark:text-slate-300 dark:hover:bg-slate-800"
+    >
+      {props.icon}
+    </button>
+  );
+}
+
 /** Map authoring panel: map settings, floor plan, import/export and graph tools. */
 export function EditorSidebar(props: EditorSidebarProps) {
   const { map, tool, onToolChange, selectedNode, linkFrom, message } = props;
@@ -127,7 +154,25 @@ export function EditorSidebar(props: EditorSidebarProps) {
       )}
 
       <section>
-        <h2 className={heading}>Tools</h2>
+        <div className="mb-2 flex items-center justify-between">
+          <h2 className={heading.replace('mb-2 ', '')}>Tools</h2>
+          <div className="flex gap-1">
+            <HistoryButton
+              label="Undo"
+              shortcut="Ctrl+Z"
+              icon={<Undo2 className="size-4" />}
+              disabled={!props.canUndo}
+              onClick={props.onUndo}
+            />
+            <HistoryButton
+              label="Redo"
+              shortcut="Ctrl+Shift+Z"
+              icon={<Redo2 className="size-4" />}
+              disabled={!props.canRedo}
+              onClick={props.onRedo}
+            />
+          </div>
+        </div>
         <div className="grid grid-cols-5 gap-1 rounded-xl bg-slate-100 p-1 dark:bg-slate-800" role="toolbar">
           {TOOLS.map((t) => (
             <button

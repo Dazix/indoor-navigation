@@ -123,6 +123,9 @@ export default function App() {
     setLinkFromId(null);
     setMeasure([]);
   }
+  // Undo / redo can remove the selected location.
+  if (map && selectedNodeId && !map.nodes[selectedNodeId]) setSelectedNodeId(null);
+  if (map && linkFromId && !map.nodes[linkFromId]) setLinkFromId(null);
   const currentLocation = nav.from && map?.nodes[nav.from] ? nav.from : null;
   const destination = nav.to && map?.nodes[nav.to] ? nav.to : null;
 
@@ -156,6 +159,35 @@ export default function App() {
     () => (map ? computeRoute(map, currentLocation, destination, pdr.distanceM) : null),
     [map, currentLocation, destination, pdr.distanceM],
   );
+
+  // Ctrl/Cmd+Z undoes, Ctrl/Cmd+Shift+Z or Ctrl+Y redoes; text fields keep their own undo.
+  const { undo, redo } = library;
+  useEffect(() => {
+    if (mode !== 'editor') return;
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
+      const target = e.target;
+      if (
+        target instanceof HTMLElement &&
+        (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName))
+      ) {
+        return;
+      }
+      const key = e.key.toLowerCase();
+      if (key === 'z') {
+        e.preventDefault();
+        if (e.shiftKey) redo();
+        else undo();
+      } else if (key === 'y' && !e.shiftKey) {
+        e.preventDefault();
+        redo();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [mode, undo, redo]);
 
   useEffect(() => {
     if (!notice) return;
@@ -442,11 +474,15 @@ export default function App() {
             map={map}
             tool={tool}
             onToolChange={changeTool}
+            canUndo={library.canUndo}
+            canRedo={library.canRedo}
+            onUndo={library.undo}
+            onRedo={library.redo}
             selectedNode={selectedNode}
             linkFrom={linkFromId ? (map.nodes[linkFromId] ?? null) : null}
             message={errorText ? { tone: 'error', text: errorText } : notice}
             onMetadataChange={(patch) => {
-              updateMap((m) => updateMetadata(m, patch));
+              updateMap((m) => updateMetadata(m, patch), `meta:${Object.keys(patch).join(',')}`);
             }}
             onFloorPlanUpload={handleFloorPlan}
             onFloorPlanPaste={pasteFloorPlan}
@@ -466,7 +502,7 @@ export default function App() {
               updateMap((m) => rotateMap90(m, clockwise));
             }}
             onFineRotation={(deg) => {
-              updateMap((m) => setFloorPlanFineRotation(m, deg));
+              updateMap((m) => setFloorPlanFineRotation(m, deg), 'fine-rotation');
             }}
             onExport={() => {
               void exportMapToFile(map);
@@ -496,7 +532,12 @@ export default function App() {
             }}
             onImport={handleImport}
             onNodeChange={(patch) => {
-              if (selectedNodeId) updateMap((m) => updateNode(m, selectedNodeId, patch));
+              if (selectedNodeId) {
+                updateMap(
+                  (m) => updateNode(m, selectedNodeId, patch),
+                  `node:${selectedNodeId}:${Object.keys(patch).join(',')}`,
+                );
+              }
             }}
             onRecordWalkthrough={() => {
               setWalkthroughOpen(true);
@@ -559,7 +600,7 @@ export default function App() {
               onRoomTap={navigateTo}
               onCanvasTap={handleCanvasTap}
               onNodeDrag={(id, point) => {
-                updateMap((m) => moveNode(m, id, point));
+                updateMap((m) => moveNode(m, id, point), `move:${id}`);
               }}
               focus={mode === 'editor' ? mapFocus : null}
               measureLine={mode === 'editor' && tool === 'measure' ? measure : undefined}
@@ -567,7 +608,7 @@ export default function App() {
                 updateMap((m) => insertBend(m, edgeIndex, segmentIndex, point));
               }}
               onBendDrag={(edgeIndex, bendIndex, point) => {
-                updateMap((m) => moveBend(m, edgeIndex, bendIndex, point));
+                updateMap((m) => moveBend(m, edgeIndex, bendIndex, point), `bend:${edgeIndex}:${bendIndex}`);
               }}
               onEdgeTap={(edgeIndex) => {
                 updateMap((m) => deleteEdge(m, edgeIndex));
