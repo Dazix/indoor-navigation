@@ -15,6 +15,8 @@ export interface MatchResult {
   /** Similarity in percent, 0–100. */
   score: number;
   thumbnail: string | null;
+  /** Ranking bonus in percent points from the location prior; `score` stays the raw similarity. */
+  boost?: number;
 }
 
 export type EmbeddingEngine = 'mobilenet' | 'fallback';

@@ -7,8 +7,10 @@ import {
   findNodeByCode,
   isFrameReady,
   isTrained,
+  pickAutoMatch,
   rankMatches,
 } from '../../services/visionMatcher';
+import { proximityBoosts, type LocationFix } from '../../services/locationPrior';
 import type { MapData } from '../../types/map';
 import type { MatchResult } from '../../types/vision';
 import { Button } from '../ui/Button';
@@ -19,6 +21,8 @@ interface VisionScannerModalProps {
   onClose: () => void;
   map: MapData;
   onDetected: (nodeId: string) => void;
+  /** Last confirmed location; nearby places get a ranking bonus while it is fresh. */
+  lastFix: LocationFix | null;
 }
 
 type Tab = 'visual' | 'code';
@@ -28,11 +32,14 @@ const MIN_SCORE = 30;
 /** Score needed for automatic relocalization, and on how many consecutive frames. */
 const AUTO_SCORE = 80;
 const AUTO_FRAMES = 2;
+/** Ranking lead (percent points) over the runner-up needed for automatic relocalization. */
+const AUTO_MARGIN = 8;
 
 /** Camera-based relocalization: markerless (MobileNet embeddings) or QR / barcode markers. */
-export default function VisionScannerModal({ onClose, map, onDetected }: VisionScannerModalProps) {
+export default function VisionScannerModal({ onClose, map, onDetected, lastFix }: VisionScannerModalProps) {
   const [tab, setTab] = useState<Tab>('visual');
   const [results, setResults] = useState<MatchResult[]>([]);
+  const [ambiguous, setAmbiguous] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [manualCode, setManualCode] = useState('');
   const { videoRef, status: cameraStatus, retry } = useCamera(true);
@@ -46,9 +53,9 @@ export default function VisionScannerModal({ onClose, map, onDetected }: VisionS
   const barcodeSupported = typeof window !== 'undefined' && 'BarcodeDetector' in window;
 
   // Latest values for the scan loop, which must not restart on every render.
-  const latest = useRef({ map, onDetected, onClose, tab, embed });
+  const latest = useRef({ map, onDetected, onClose, tab, embed, lastFix });
   useEffect(() => {
-    latest.current = { map, onDetected, onClose, tab, embed };
+    latest.current = { map, onDetected, onClose, tab, embed, lastFix };
   });
 
   const detectedRef = useRef(false);
@@ -83,15 +90,21 @@ export default function VisionScannerModal({ onClose, map, onDetected }: VisionS
       const video = videoRef.current;
       if (busy || detectedRef.current || !isFrameReady(video)) return;
       busy = true;
-      const { map: currentMap, tab: currentTab, embed } = latest.current;
+      const { map: currentMap, tab: currentTab, embed, lastFix: fix } = latest.current;
 
       const scan = async () => {
         if (currentTab === 'visual') {
           const { vector } = await embed(video);
-          const ranked = rankMatches(vector, currentMap.nodes, { minScore: MIN_SCORE, limit: 4 });
+          const ranked = rankMatches(vector, currentMap.nodes, {
+            minScore: MIN_SCORE,
+            limit: 4,
+            boosts: proximityBoosts(currentMap, fix, Date.now()),
+          });
           setResults(ranked);
-          const top = ranked[0];
-          if (top && top.score >= AUTO_SCORE) {
+          const top = pickAutoMatch(ranked, { minScore: AUTO_SCORE, minMargin: AUTO_MARGIN });
+          // Strong match that similar-looking places compete with: let the user choose.
+          setAmbiguous(!top && (ranked[0]?.score ?? 0) >= AUTO_SCORE);
+          if (top) {
             streak =
               streak?.id === top.node.id
                 ? { id: top.node.id, frames: streak.frames + 1 }
@@ -236,6 +249,11 @@ export default function VisionScannerModal({ onClose, map, onDetected }: VisionS
                   <p className="mb-2 rounded-xl bg-amber-500/15 p-2 text-xs text-amber-300">
                     Views on this map were recorded without the AI model. Record the walkthroughs again for
                     accurate matching.
+                  </p>
+                )}
+                {ambiguous && (
+                  <p className="mb-2 rounded-xl bg-amber-500/15 p-2 text-xs text-amber-300">
+                    Several places look alike. Pick yours below, or scan its QR code.
                   </p>
                 )}
                 <MatchResultsList results={results} onPick={pickManually} />

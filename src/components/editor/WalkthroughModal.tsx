@@ -1,7 +1,14 @@
 import { Camera, Loader2, Pause, Trash2, Video } from 'lucide-react';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { CAMERA_STATUS_TEXT, useCamera } from '../../hooks/useCamera';
 import { useTensorFlow } from '../../hooks/useTensorFlow';
+import {
+  coverageReport,
+  GOOD_VIEWS,
+  isRepeating,
+  MIN_VIEWS,
+  type CoverageLevel,
+} from '../../services/coverage';
 import { captureThumbnail, isFrameReady } from '../../services/visionMatcher';
 import type { MapNode } from '../../types/map';
 import type { EmbeddingSample } from '../../types/vision';
@@ -17,6 +24,12 @@ interface WalkthroughModalProps {
 const SAMPLE_INTERVAL_MS = 1200;
 /** Keeps a place's footprint in storage and exports reasonable (~3 kB per sample). */
 export const MAX_SAMPLES = 60;
+
+const COVERAGE_STYLE: Record<CoverageLevel, { bar: string; text: string; label: string }> = {
+  low: { bar: 'bg-red-400', text: 'text-red-300', label: 'Too few different views' },
+  ok: { bar: 'bg-amber-400', text: 'text-amber-300', label: 'Fair coverage' },
+  good: { bar: 'bg-emerald-400', text: 'text-emerald-300', label: 'Good coverage' },
+};
 
 function sampleId(): string {
   return `emb_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
@@ -39,6 +52,8 @@ export default function WalkthroughModal({ node, onClose, onSave }: WalkthroughM
 
   const full = samples.length >= MAX_SAMPLES;
   const modelLoading = modelStatus === 'loading' || modelStatus === 'idle';
+  const coverage = useMemo(() => coverageReport(samples), [samples]);
+  const repeating = useMemo(() => isRepeating(samples), [samples]);
 
   const capture = useCallback(async () => {
     const video = videoRef.current;
@@ -69,7 +84,9 @@ export default function WalkthroughModal({ node, onClose, onSave }: WalkthroughM
   if (recording && full) setRecording(false);
 
   const statusText = recording
-    ? 'Recording… walk slowly and turn the phone to cover the whole place.'
+    ? repeating
+      ? 'Same view again. Move to another spot or turn the phone.'
+      : 'Recording… walk slowly and turn the phone to cover the whole place.'
     : full
       ? `Limit of ${MAX_SAMPLES} views reached. Remove some to add new ones.`
       : 'Hold the phone at eye level and start recording.';
@@ -160,6 +177,38 @@ export default function WalkthroughModal({ node, onClose, onSave }: WalkthroughM
           Snapshot
         </Button>
       </div>
+
+      {coverage && (
+        <section className="border-b border-slate-800 p-3" aria-label="Coverage">
+          <div className="mb-1.5 flex items-center justify-between text-xs">
+            <span className={`font-semibold ${COVERAGE_STYLE[coverage.level].text}`}>
+              {COVERAGE_STYLE[coverage.level].label}
+            </span>
+            <span className="font-mono text-slate-400">
+              {coverage.views} different views (aim for {GOOD_VIEWS}+)
+            </span>
+          </div>
+          <div
+            className="h-1.5 overflow-hidden rounded-full bg-slate-800"
+            role="progressbar"
+            aria-valuemin={0}
+            aria-valuemax={GOOD_VIEWS}
+            aria-valuenow={Math.min(coverage.views, GOOD_VIEWS)}
+          >
+            <div
+              className={`h-full rounded-full transition-all ${COVERAGE_STYLE[coverage.level].bar}`}
+              style={{ width: `${coverage.progress * 100}%` }}
+            />
+          </div>
+          {coverage.level !== 'good' && (
+            <p className="mt-1.5 text-[11px] text-slate-400">
+              {coverage.views < MIN_VIEWS ? 'The place would only be recognised from about one spot. ' : ''}
+              Walk through it and turn towards the desks, doors and windows, so it is recognised from anywhere
+              inside.
+            </p>
+          )}
+        </section>
+      )}
 
       <section className="p-3">
         <h3 className="mb-2 text-[11px] font-bold tracking-wider text-slate-400 uppercase">
