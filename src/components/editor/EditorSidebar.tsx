@@ -72,13 +72,13 @@ const TOOLS: { id: EditorTool; label: string; icon: ReactNode; hint: string }[] 
     id: 'select',
     label: 'Select',
     icon: <MousePointer2 className="size-4" />,
-    hint: 'Tap a location to edit it, drag to move it. Click a corridor to add a bend point.',
+    hint: 'Tap a location to edit it, drag to move it. Tap or drag a corridor to add a bend point.',
   },
   {
     id: 'add_node',
     label: 'Add',
     icon: <Plus className="size-4" />,
-    hint: 'Tap the floor plan to place a new location.',
+    hint: 'Tap the floor plan to place a new location. Tap a corridor to add an unnamed bend point.',
   },
   {
     id: 'link_nodes',

@@ -89,6 +89,32 @@ export interface PolylineHit {
   distance: number;
 }
 
+export interface CorridorHit {
+  edgeIndex: number;
+  segmentIndex: number;
+  /** Closest point on the corridor. */
+  point: Point;
+}
+
+/** Corridor closest to `p` within `maxDistance` map units, or null when none is that close. */
+export function corridorNear(
+  nodes: Record<string, MapNode>,
+  edges: readonly Edge[],
+  p: Point,
+  maxDistance: number,
+): CorridorHit | null {
+  let best: CorridorHit | null = null;
+  let bestDistance = maxDistance;
+  for (const [edgeIndex, edge] of edges.entries()) {
+    const hit = nearestOnPolyline(corridorPoints(nodes, edge), p);
+    if (hit && hit.distance <= bestDistance) {
+      best = { edgeIndex, segmentIndex: hit.segmentIndex, point: hit.point };
+      bestDistance = hit.distance;
+    }
+  }
+  return best;
+}
+
 /** Closest point to `p` on a polyline, or null for fewer than two points. */
 export function nearestOnPolyline(points: readonly Point[], p: Point): PolylineHit | null {
   let best: PolylineHit | null = null;

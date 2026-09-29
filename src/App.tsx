@@ -14,7 +14,7 @@ import { usePDR } from './hooks/usePDR';
 import { useTensorFlow } from './hooks/useTensorFlow';
 import { normalizeDeg } from './services/geometry';
 import type { LocationFix } from './services/locationPrior';
-import { deleteBend, deleteEdge, insertBend, moveBend } from './services/corridors';
+import { corridorNear, deleteBend, deleteEdge, insertBend, moveBend } from './services/corridors';
 import { imageRatio, pickImageFile, readClipboardImage, readFloorPlanFile } from './services/imageFiles';
 import {
   addNode,
@@ -295,11 +295,17 @@ export default function App() {
     setNotice({ tone: 'info', text: `Scale set: the map is ${size(width)} × ${size(height)} m.` });
   };
 
-  const handleCanvasTap = (point: Point) => {
+  const handleCanvasTap = (point: Point, near: { raw: Point; tolerance: number }) => {
     if (mode !== 'editor' || !map) return;
     if (tool === 'measure') {
       addMeasurePoint(point);
     } else if (tool === 'add_node') {
+      // A tap on a corridor adds an unnamed bend point instead of a named location.
+      const corridor = corridorNear(map.nodes, map.edges, near.raw, near.tolerance);
+      if (corridor) {
+        updateMap((m) => insertBend(m, corridor.edgeIndex, corridor.segmentIndex, corridor.point));
+        return;
+      }
       const n = Object.keys(map.nodes).length + 1;
       const id = createNodeId();
       updateMap((m) => addNode(m, { id, ...point, label: `Location ${n}`, markerCode: `LOC-${n}` }));
