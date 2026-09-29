@@ -1,6 +1,6 @@
 import { useCallback, useSyncExternalStore } from 'react';
 import type { MobileNet } from '@tensorflow-models/mobilenet';
-import { compactEmbedding, extractFallbackEmbedding } from '../services/visionMatcher';
+import { compactEmbedding, cropToFrameAspect, extractFallbackEmbedding } from '../services/visionMatcher';
 import type { EmbeddingEngine, ModelStatus, PixelSource } from '../types/vision';
 
 type TF = typeof import('@tensorflow/tfjs');
@@ -66,7 +66,8 @@ export interface Embedding {
 }
 
 /** Extracts a feature vector from a frame. Every tensor is released before returning. */
-export async function embedFrame(source: PixelSource): Promise<Embedding> {
+export async function embedFrame(rawSource: PixelSource): Promise<Embedding> {
+  const source = cropToFrameAspect(rawSource);
   if (loaded) {
     const { tf, model } = loaded;
     // tidy() frees every intermediate tensor; only the returned embedding survives until dispose().

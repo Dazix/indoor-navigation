@@ -14,13 +14,29 @@ const DEFAULT_CONSTRAINTS: MediaTrackConstraints = {
   height: { ideal: 480 },
 };
 
-/** Portrait frames for the visual-memory scanner and walkthrough recording. */
-export const PORTRAIT_CONSTRAINTS: MediaTrackConstraints = {
+/**
+ * Full-sensor frames (most sensors are natively 4:3) with no forced aspect ratio, so the camera's
+ * widest field of view is kept. Used by the visual-memory scanner and walkthrough recording.
+ */
+export const WIDE_CONSTRAINTS: MediaTrackConstraints = {
   facingMode: { ideal: 'environment' },
-  aspectRatio: { ideal: 3 / 4 },
-  width: { ideal: 480 },
-  height: { ideal: 640 },
+  width: { ideal: 1280 },
+  height: { ideal: 960 },
 };
+
+export interface CameraZoom {
+  min: number;
+  max: number;
+  value: number;
+}
+
+/** `zoom` is not part of the standard DOM typings yet. */
+interface ZoomCapabilities {
+  zoom?: { min: number; max: number };
+}
+interface ZoomSettings {
+  zoom?: number;
+}
 
 const DEVICE_STORAGE_KEY = 'indoor-nav:camera-device';
 
@@ -54,6 +70,22 @@ async function listCameras(): Promise<CameraDevice[]> {
   }
 }
 
+/** Zoom range of the track (null when unsupported); starts at the widest setting when it is below 1×. */
+async function initialZoom(track: MediaStreamTrack | null): Promise<CameraZoom | null> {
+  const range = (track?.getCapabilities() as ZoomCapabilities | undefined)?.zoom;
+  if (!track || !range) return null;
+  let value = (track.getSettings() as ZoomSettings).zoom ?? 1;
+  if (range.min < 1) {
+    try {
+      await track.applyConstraints({ advanced: [{ zoom: range.min } as MediaTrackConstraintSet] });
+      value = range.min;
+    } catch {
+      // Keep the current zoom.
+    }
+  }
+  return { min: range.min, max: range.max, value };
+}
+
 /**
  * Manages the camera stream for a <video> element while `active` is true (rear camera by default).
  * The user's lens choice is remembered across sessions. Tracks are stopped when the hook
@@ -70,6 +102,8 @@ export function useCamera(active: boolean, constraints: MediaTrackConstraints = 
     null,
     parseDeviceId,
   );
+  const [zoom, setZoomState] = useState<CameraZoom | null>(null);
+  const trackRef = useRef<MediaStreamTrack | null>(null);
   const constraintsRef = useRef(constraints);
   const blocked = precheck(active);
 
@@ -116,7 +150,10 @@ export function useCamera(active: boolean, constraints: MediaTrackConstraints = 
         const cameras = await listCameras();
         if (isCancelled()) return;
         setDevices(cameras);
-        setCurrentId(s.getVideoTracks()[0]?.getSettings().deviceId ?? null);
+        const track = s.getVideoTracks()[0] ?? null;
+        trackRef.current = track;
+        setCurrentId(track?.getSettings().deviceId ?? null);
+        setZoomState(await initialZoom(track));
         setOutcome({ attempt, status: 'ready' });
       } catch (err) {
         if (isCancelled()) return;
@@ -135,6 +172,8 @@ export function useCamera(active: boolean, constraints: MediaTrackConstraints = 
         t.stop();
       });
       if (video) video.srcObject = null;
+      trackRef.current = null;
+      setZoomState(null);
       setOutcome(null);
     };
   }, [blocked, attempt, preferredId, setPreferredId]);
@@ -150,6 +189,26 @@ export function useCamera(active: boolean, constraints: MediaTrackConstraints = 
     [setPreferredId],
   );
 
+  const setZoom = useCallback((value: number) => {
+    const track = trackRef.current;
+    if (!track) return;
+    void track
+      .applyConstraints({ advanced: [{ zoom: value } as MediaTrackConstraintSet] })
+      .then(() => {
+        setZoomState((z) => (z ? { ...z, value } : z));
+      })
+      .catch(() => undefined);
+  }, []);
+
   const status: CameraStatus = blocked ?? (outcome?.attempt === attempt ? outcome.status : 'starting');
-  return { videoRef, status, retry, devices, currentDeviceId: currentId, selectDevice };
+  return {
+    videoRef,
+    status,
+    retry,
+    devices,
+    currentDeviceId: currentId,
+    selectDevice,
+    zoom,
+    setZoom,
+  };
 }
