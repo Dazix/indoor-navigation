@@ -17,6 +17,15 @@ import {
   withName,
   writeMap,
 } from '../services/mapLibrary';
+import {
+  canRedo,
+  canUndo,
+  commit,
+  createHistory,
+  redo as redoHistory,
+  undo as undoHistory,
+  type History,
+} from '../services/history';
 import { loadDefaultMap } from '../services/mapStorage';
 import type { MapData, MapLibrary } from '../types/map';
 import { useLocalStorage } from './useLocalStorage';
@@ -26,6 +35,12 @@ const SAVE_DEBOUNCE_MS = 400;
 export type LibraryStatus = 'loading' | 'ready' | 'error';
 
 interface ActiveMap {
+  id: string;
+  /** Undo / redo snapshots of the map; `present` is the map being shown and edited. */
+  history: History<MapData>;
+}
+
+interface PendingSave {
   id: string;
   map: MapData;
 }
@@ -51,7 +66,7 @@ export function useMapLibrary() {
 
   // The last map object known to be in IndexedDB; edits produce new objects and trigger a save.
   const savedRef = useRef<MapData | null>(null);
-  const pendingRef = useRef<ActiveMap | null>(null);
+  const pendingRef = useRef<PendingSave | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const bootstrapping = useRef(false);
 
@@ -107,7 +122,7 @@ export function useMapLibrary() {
           return;
         }
         savedRef.current = map;
-        setActive({ id: activeId, map });
+        setActive({ id: activeId, history: createHistory(map) });
         setError(null);
       })
       .catch((err: unknown) => {
@@ -121,9 +136,9 @@ export function useMapLibrary() {
 
   // Debounced auto-save of edits to the active map.
   useEffect(() => {
-    if (!active || active.map === savedRef.current) return;
-    savedRef.current = active.map;
-    pendingRef.current = active;
+    if (!active || active.history.present === savedRef.current) return;
+    savedRef.current = active.history.present;
+    pendingRef.current = { id: active.id, map: active.history.present };
     clearTimeout(timerRef.current);
     timerRef.current = setTimeout(() => void flush(), SAVE_DEBOUNCE_MS);
   }, [active, flush]);
@@ -139,8 +154,29 @@ export function useMapLibrary() {
     };
   }, [flush]);
 
-  const updateMap = useCallback((updater: (map: MapData) => MapData) => {
-    setActive((prev) => (prev ? { id: prev.id, map: updater(prev.map) } : prev));
+  /** Edits the active map. Calls with the same `key` in quick succession form one undo step. */
+  const updateMap = useCallback((updater: (map: MapData) => MapData, key?: string) => {
+    const now = Date.now();
+    setActive((prev) =>
+      prev
+        ? {
+            id: prev.id,
+            history: commit(prev.history, updater(prev.history.present), { ...(key ? { key } : {}), now }),
+          }
+        : prev,
+    );
+  }, []);
+
+  const undo = useCallback(() => {
+    setActive((prev) =>
+      prev && canUndo(prev.history) ? { id: prev.id, history: undoHistory(prev.history) } : prev,
+    );
+  }, []);
+
+  const redo = useCallback(() => {
+    setActive((prev) =>
+      prev && canRedo(prev.history) ? { id: prev.id, history: redoHistory(prev.history) } : prev,
+    );
   }, []);
 
   const addMap = useCallback(
@@ -178,7 +214,7 @@ export function useMapLibrary() {
       await writeMap(existing.id, named);
       if (active?.id === existing.id) {
         savedRef.current = named;
-        setActive({ id: existing.id, map: named });
+        setActive({ id: existing.id, history: createHistory(named) });
       }
       setLibrary((lib) => ({
         ...updateSummary(lib, existing.id, { name: named.metadata.name, updatedAt: Date.now() }),
@@ -207,7 +243,8 @@ export function useMapLibrary() {
 
   const duplicateActive = useCallback(async () => {
     if (!active) return null;
-    return addMap(withName(active.map, `${active.map.metadata.name} copy`));
+    const current = active.history.present;
+    return addMap(withName(current, `${current.metadata.name} copy`));
   }, [active, addMap]);
 
   const renameMap = useCallback(
@@ -247,7 +284,11 @@ export function useMapLibrary() {
   return {
     maps: library.maps,
     activeMapId: active?.id ?? null,
-    map: active?.map ?? null,
+    map: active?.history.present ?? null,
+    canUndo: active ? canUndo(active.history) : false,
+    canRedo: active ? canRedo(active.history) : false,
+    undo,
+    redo,
     status,
     error,
     saveError: saveError ?? indexError,

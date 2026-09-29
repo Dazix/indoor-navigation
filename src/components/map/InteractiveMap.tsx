@@ -41,7 +41,8 @@ interface InteractiveMapProps {
   selectedNodeId: string | null;
   onNodeTap: (id: string) => void;
   onRoomTap: (nodeId: string) => void;
-  onCanvasTap: (point: Point) => void;
+  /** `near` is the untouched tap point and how far a corridor may be from it to count as hit. */
+  onCanvasTap: (point: Point, near: { raw: Point; tolerance: number }) => void;
   onNodeDrag: (id: string, point: Point) => void;
   /** Adds a bend into segment `segmentIndex` of corridor `edgeIndex` (select tool). */
   onBendInsert?: (edgeIndex: number, segmentIndex: number, point: Point) => void;
@@ -67,6 +68,8 @@ const GRID_STEP = 20;
 const DRAG_THRESHOLD = 1.2;
 /** Screen distance a pan has to travel before it stops being a tap. */
 const PAN_THRESHOLD_PX = 5;
+/** Half the width (in marker-scale units) of the invisible stroke that catches taps on a corridor. */
+const CORRIDOR_HIT_WIDTH = 1.75;
 const BUTTON_ZOOM_STEP = 1.5;
 /** Zoom a focused location (search result) is shown at, unless the view is already closer. */
 const FOCUS_ZOOM = 3;
@@ -260,7 +263,8 @@ export function InteractiveMap({
       return;
     }
     if (!svgRef.current) return;
-    onCanvasTap(snap(toMapPoint(svgRef.current, e.clientX, e.clientY)));
+    const raw = toMapPoint(svgRef.current, e.clientX, e.clientY);
+    onCanvasTap(snap(raw), { raw, tolerance: CORRIDOR_HIT_WIDTH * s });
   };
 
   const pinchState = () => {
@@ -563,7 +567,7 @@ export function InteractiveMap({
                     points={line}
                     fill="none"
                     stroke="transparent"
-                    strokeWidth={3.5 * s}
+                    strokeWidth={2 * CORRIDOR_HIT_WIDTH * s}
                     strokeLinecap="round"
                     strokeLinejoin="round"
                     pointerEvents="stroke"

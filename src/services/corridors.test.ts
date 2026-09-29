@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  corridorNear,
   corridorPoints,
   deleteBend,
   deleteEdge,
@@ -93,5 +94,33 @@ describe('corridors', () => {
     expect(nearestOnPolyline(points, { x: 12, y: 6 })?.segmentIndex).toBe(1);
     expect(nearestOnPolyline(points, { x: -5, y: 0 })?.point).toEqual({ x: 0, y: 0 });
     expect(nearestOnPolyline([{ x: 0, y: 0 }], { x: 1, y: 1 })).toBeNull();
+  });
+
+  describe('corridorNear', () => {
+    it('hits a straight corridor within the tolerance', () => {
+      const map = sampleMap();
+      expect(corridorNear(map.nodes, map.edges, { x: 21, y: 19 }, 2)).toEqual({
+        edgeIndex: 0,
+        segmentIndex: 0,
+        point: { x: 20, y: 20 },
+      });
+    });
+
+    it('reports the segment of a bent corridor', () => {
+      const map = insertBend(sampleMap(), 0, 0, { x: 30, y: 10 });
+      expect(corridorNear(map.nodes, map.edges, { x: 30, y: 20 }, 1)?.segmentIndex).toBe(1);
+    });
+
+    it('misses beyond the tolerance and without corridors', () => {
+      const map = sampleMap();
+      expect(corridorNear(map.nodes, map.edges, { x: 30, y: 10 }, 2)).toBeNull();
+      expect(corridorNear(map.nodes, [], { x: 20, y: 20 }, 100)).toBeNull();
+    });
+
+    it('picks the closest of two corridors', () => {
+      let map = addNode(sampleMap(), { id: 'c', x: 10, y: 40, label: 'C', markerCode: 'LOC-C' });
+      map = toggleEdge(map, 'a', 'c');
+      expect(corridorNear(map.nodes, map.edges, { x: 11, y: 25 }, 5)?.edgeIndex).toBe(1);
+    });
   });
 });
