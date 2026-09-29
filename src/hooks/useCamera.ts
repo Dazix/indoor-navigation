@@ -1,12 +1,30 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useLocalStorage } from './useLocalStorage';
 
 export type CameraStatus = 'idle' | 'starting' | 'ready' | 'denied' | 'unavailable' | 'insecure';
+
+export interface CameraDevice {
+  deviceId: string;
+  label: string;
+}
 
 const DEFAULT_CONSTRAINTS: MediaTrackConstraints = {
   facingMode: { ideal: 'environment' },
   width: { ideal: 640 },
   height: { ideal: 480 },
 };
+
+/** Portrait frames for the visual-memory scanner and walkthrough recording. */
+export const PORTRAIT_CONSTRAINTS: MediaTrackConstraints = {
+  facingMode: { ideal: 'environment' },
+  aspectRatio: { ideal: 3 / 4 },
+  width: { ideal: 480 },
+  height: { ideal: 640 },
+};
+
+const DEVICE_STORAGE_KEY = 'indoor-nav:camera-device';
+
+const parseDeviceId = (raw: unknown): string | null => (typeof raw === 'string' && raw ? raw : null);
 
 export const CAMERA_STATUS_TEXT: Record<CameraStatus, string> = {
   idle: 'Camera is off',
@@ -25,14 +43,33 @@ function precheck(active: boolean): CameraStatus | null {
   return null;
 }
 
+async function listCameras(): Promise<CameraDevice[]> {
+  try {
+    const all = await navigator.mediaDevices.enumerateDevices();
+    return all
+      .filter((d) => d.kind === 'videoinput' && d.deviceId)
+      .map((d, i) => ({ deviceId: d.deviceId, label: d.label || `Camera ${i + 1}` }));
+  } catch {
+    return [];
+  }
+}
+
 /**
- * Manages the rear camera stream for a <video> element while `active` is true.
- * Tracks are stopped when the hook deactivates or unmounts.
+ * Manages the camera stream for a <video> element while `active` is true (rear camera by default).
+ * The user's lens choice is remembered across sessions. Tracks are stopped when the hook
+ * deactivates or unmounts.
  */
 export function useCamera(active: boolean, constraints: MediaTrackConstraints = DEFAULT_CONSTRAINTS) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [attempt, setAttempt] = useState(0);
   const [outcome, setOutcome] = useState<{ attempt: number; status: CameraStatus } | null>(null);
+  const [devices, setDevices] = useState<CameraDevice[]>([]);
+  const [currentId, setCurrentId] = useState<string | null>(null);
+  const [preferredId, setPreferredId] = useLocalStorage<string | null>(
+    DEVICE_STORAGE_KEY,
+    null,
+    parseDeviceId,
+  );
   const constraintsRef = useRef(constraints);
   const blocked = precheck(active);
 
@@ -43,9 +80,26 @@ export function useCamera(active: boolean, constraints: MediaTrackConstraints = 
     let cancelled = false;
     const isCancelled = () => cancelled;
 
+    const open = (deviceId: string | null) => {
+      // An explicit lens replaces the facing-mode hint, otherwise the two constraints can conflict.
+      const videoConstraints: MediaTrackConstraints = deviceId
+        ? { ...constraintsRef.current, facingMode: undefined, deviceId: { exact: deviceId } }
+        : constraintsRef.current;
+      return navigator.mediaDevices.getUserMedia({ video: videoConstraints, audio: false });
+    };
+
     const start = async () => {
       try {
-        const s = await navigator.mediaDevices.getUserMedia({ video: constraintsRef.current, audio: false });
+        let s: MediaStream;
+        try {
+          s = await open(preferredId);
+        } catch (err) {
+          // The remembered lens is gone (unplugged, permissions reset): forget it, use the default.
+          const name = err instanceof DOMException ? err.name : '';
+          if (!preferredId || (name !== 'OverconstrainedError' && name !== 'NotFoundError')) throw err;
+          if (!isCancelled()) setPreferredId(null);
+          s = await open(null);
+        }
         if (isCancelled()) {
           s.getTracks().forEach((t) => {
             t.stop();
@@ -58,7 +112,12 @@ export function useCamera(active: boolean, constraints: MediaTrackConstraints = 
           // Autoplay can be blocked until the element is visible; a later play() retry is harmless.
           await video.play().catch(() => undefined);
         }
-        if (!isCancelled()) setOutcome({ attempt, status: 'ready' });
+        // Labels and the full device list are only exposed once permission has been granted.
+        const cameras = await listCameras();
+        if (isCancelled()) return;
+        setDevices(cameras);
+        setCurrentId(s.getVideoTracks()[0]?.getSettings().deviceId ?? null);
+        setOutcome({ attempt, status: 'ready' });
       } catch (err) {
         if (isCancelled()) return;
         const name = err instanceof DOMException ? err.name : '';
@@ -78,12 +137,19 @@ export function useCamera(active: boolean, constraints: MediaTrackConstraints = 
       if (video) video.srcObject = null;
       setOutcome(null);
     };
-  }, [blocked, attempt]);
+  }, [blocked, attempt, preferredId, setPreferredId]);
 
   const retry = useCallback(() => {
     setAttempt((n) => n + 1);
   }, []);
 
+  const selectDevice = useCallback(
+    (deviceId: string) => {
+      setPreferredId(deviceId);
+    },
+    [setPreferredId],
+  );
+
   const status: CameraStatus = blocked ?? (outcome?.attempt === attempt ? outcome.status : 'starting');
-  return { videoRef, status, retry };
+  return { videoRef, status, retry, devices, currentDeviceId: currentId, selectDevice };
 }
