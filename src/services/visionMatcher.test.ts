@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { MapNode } from '../types/map';
 import {
+  centerCropRect,
   compactEmbedding,
   cosineSimilarity,
   EMBEDDING_SIZE,
@@ -24,6 +25,27 @@ function trained(id: string, vectors: number[][]): MapNode {
     })),
   };
 }
+
+describe('centerCropRect', () => {
+  it('crops the sides of a landscape frame to 3:4', () => {
+    const r = centerCropRect(640, 480);
+    expect(r.sh).toBeCloseTo(480);
+    expect(r.sw).toBeCloseTo(360);
+    expect(r.sx).toBeCloseTo(140);
+    expect(r.sy).toBeCloseTo(0);
+  });
+
+  it('crops top and bottom of a frame taller than 3:4', () => {
+    const r = centerCropRect(360, 800);
+    expect(r.sw).toBeCloseTo(360);
+    expect(r.sh).toBeCloseTo(480);
+    expect(r.sy).toBeCloseTo(160);
+  });
+
+  it('keeps a 3:4 frame untouched', () => {
+    expect(centerCropRect(480, 640)).toEqual({ sx: 0, sy: 0, sw: 480, sh: 640 });
+  });
+});
 
 describe('cosineSimilarity', () => {
   it('is 1 for identical and parallel vectors', () => {

@@ -184,12 +184,49 @@ export function extractFallbackEmbedding(source: PixelSource): number[] {
   return normalize(vector);
 }
 
+/**
+ * Every frame is centre-cropped to this width / height ratio before embedding or thumbnailing,
+ * so vectors do not depend on the native aspect ratio of the phone's camera.
+ */
+export const FRAME_ASPECT = 3 / 4;
+const FRAME_WIDTH = 336;
+const FRAME_HEIGHT = 448;
+
+/** Largest centred rectangle of `aspect` (width / height) that fits into a `width` × `height` frame. */
+export function centerCropRect(width: number, height: number, aspect = FRAME_ASPECT) {
+  const sw = Math.min(width, height * aspect);
+  const sh = sw / aspect;
+  return { sx: (width - sw) / 2, sy: (height - sh) / 2, sw, sh };
+}
+
+function pixelSize(source: PixelSource): { width: number; height: number } {
+  if (source instanceof HTMLVideoElement) return { width: source.videoWidth, height: source.videoHeight };
+  if (source instanceof HTMLImageElement) return { width: source.naturalWidth, height: source.naturalHeight };
+  return { width: source.width, height: source.height };
+}
+
+let frameCanvas: HTMLCanvasElement | null = null;
+
+/** Centre-crops a frame to `FRAME_ASPECT`. The returned canvas is reused by the next call. */
+export function cropToFrameAspect(source: PixelSource): PixelSource {
+  const { width, height } = pixelSize(source);
+  if (width <= 0 || height <= 0) return source;
+  frameCanvas ??= document.createElement('canvas');
+  frameCanvas.width = FRAME_WIDTH;
+  frameCanvas.height = FRAME_HEIGHT;
+  const ctx = frameCanvas.getContext('2d');
+  if (!ctx) return source;
+  const { sx, sy, sw, sh } = centerCropRect(width, height);
+  ctx.drawImage(source, sx, sy, sw, sh, 0, 0, FRAME_WIDTH, FRAME_HEIGHT);
+  return frameCanvas;
+}
+
 /** Small JPEG preview of the current frame for the viewpoint gallery. */
 export function captureThumbnail(source: PixelSource, width = 90, height = 120): string {
   const canvas = document.createElement('canvas');
   canvas.width = width;
   canvas.height = height;
-  canvas.getContext('2d')?.drawImage(source, 0, 0, width, height);
+  canvas.getContext('2d')?.drawImage(cropToFrameAspect(source), 0, 0, width, height);
   return canvas.toDataURL('image/jpeg', 0.5);
 }
 

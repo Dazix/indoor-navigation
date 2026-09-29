@@ -1,7 +1,7 @@
 import { Loader2, QrCode, Sparkles } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { CAMERA_STATUS_TEXT, PORTRAIT_CONSTRAINTS, useCamera } from '../../hooks/useCamera';
-import { CameraLensPicker } from './CameraLensPicker';
+import { CAMERA_STATUS_TEXT, WIDE_CONSTRAINTS, useCamera } from '../../hooks/useCamera';
+import { CameraControls } from './CameraControls';
 import { useTensorFlow } from '../../hooks/useTensorFlow';
 import {
   EMBEDDING_SIZE,
@@ -50,7 +50,9 @@ export default function VisionScannerModal({ onClose, map, onDetected, lastFix }
     devices,
     currentDeviceId,
     selectDevice,
-  } = useCamera(true, PORTRAIT_CONSTRAINTS);
+    zoom,
+    setZoom,
+  } = useCamera(true, WIDE_CONSTRAINTS);
   const { status: modelStatus, engine, load, embed } = useTensorFlow();
 
   const trainedNodes = useMemo(() => Object.values(map.nodes).filter(isTrained), [map.nodes]);
@@ -190,9 +192,15 @@ export default function VisionScannerModal({ onClose, map, onDetected, lastFix }
 
   return (
     <Modal open onClose={onClose} title="Where am I?" tone="dark" headerExtra={tabs}>
-      <div className="relative mx-auto flex aspect-[3/4] h-[55dvh] max-w-full items-center justify-center overflow-hidden bg-black">
-        <video ref={videoRef} autoPlay playsInline muted className="size-full object-cover" />
-        <CameraLensPicker devices={devices} currentDeviceId={currentDeviceId} onSelect={selectDevice} />
+      <div className="relative flex h-[55dvh] w-full items-center justify-center overflow-hidden bg-black">
+        <video ref={videoRef} autoPlay playsInline muted className="size-full object-contain" />
+        <CameraControls
+          devices={devices}
+          currentDeviceId={currentDeviceId}
+          onSelectDevice={selectDevice}
+          zoom={zoom}
+          onZoom={setZoom}
+        />
 
         {cameraStatus !== 'ready' && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 p-6 text-center text-sm text-slate-300">

@@ -1,7 +1,7 @@
 import { Camera, Loader2, Pause, Trash2, Video } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { CAMERA_STATUS_TEXT, PORTRAIT_CONSTRAINTS, useCamera } from '../../hooks/useCamera';
-import { CameraLensPicker } from '../scanner/CameraLensPicker';
+import { CAMERA_STATUS_TEXT, WIDE_CONSTRAINTS, useCamera } from '../../hooks/useCamera';
+import { CameraControls } from '../scanner/CameraControls';
 import { useTensorFlow } from '../../hooks/useTensorFlow';
 import {
   coverageReport,
@@ -50,7 +50,9 @@ export default function WalkthroughModal({ node, onClose, onSave }: WalkthroughM
     devices,
     currentDeviceId,
     selectDevice,
-  } = useCamera(true, PORTRAIT_CONSTRAINTS);
+    zoom,
+    setZoom,
+  } = useCamera(true, WIDE_CONSTRAINTS);
   const { status: modelStatus, engine, load, embed } = useTensorFlow();
   const busy = useRef(false);
 
@@ -130,9 +132,15 @@ export default function WalkthroughModal({ node, onClose, onSave }: WalkthroughM
         </>
       }
     >
-      <div className="relative mx-auto flex aspect-[3/4] h-[50dvh] max-w-full items-center justify-center overflow-hidden bg-black">
-        <video ref={videoRef} autoPlay playsInline muted className="size-full object-cover" />
-        <CameraLensPicker devices={devices} currentDeviceId={currentDeviceId} onSelect={selectDevice} />
+      <div className="relative flex h-[50dvh] w-full items-center justify-center overflow-hidden bg-black">
+        <video ref={videoRef} autoPlay playsInline muted className="size-full object-contain" />
+        <CameraControls
+          devices={devices}
+          currentDeviceId={currentDeviceId}
+          onSelectDevice={selectDevice}
+          zoom={zoom}
+          onZoom={setZoom}
+        />
         {cameraStatus !== 'ready' ? (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 p-6 text-center text-sm text-slate-300">
             {cameraStatus === 'starting' && <Loader2 className="size-6 animate-spin" />}
