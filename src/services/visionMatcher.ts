@@ -44,13 +44,15 @@ export interface RankOptions {
   /** Minimum score in percent for a node to be included. */
   minScore?: number;
   limit?: number;
+  /** Ranking bonus per node id in percent points (see `proximityBoosts`); shown scores stay raw. */
+  boosts?: Readonly<Record<string, number>>;
 }
 
 /** Scores every trained node by its best-matching learned viewpoint (nearest neighbour), best first. */
 export function rankMatches(
   liveVector: readonly number[],
   nodes: Record<string, MapNode>,
-  { minScore = 0, limit = Infinity }: RankOptions = {},
+  { minScore = 0, limit = Infinity, boosts = {} }: RankOptions = {},
 ): MatchResult[] {
   const results: MatchResult[] = [];
 
@@ -73,10 +75,35 @@ export function rankMatches(
     }
 
     const score = Math.round(best * 100);
-    if (score >= minScore) results.push({ node, score, thumbnail });
+    if (score >= minScore) results.push({ node, score, thumbnail, boost: boosts[node.id] ?? 0 });
   }
 
-  return results.sort((a, b) => b.score - a.score).slice(0, limit);
+  return results.sort((a, b) => rankValue(b) - rankValue(a)).slice(0, limit);
+}
+
+function rankValue(result: MatchResult): number {
+  return result.score + (result.boost ?? 0);
+}
+
+export interface AutoMatchOptions {
+  /** Raw similarity in percent the best match needs. */
+  minScore: number;
+  /** Ranking lead in percent points the best match needs over the runner-up. */
+  minMargin: number;
+}
+
+/**
+ * The best match when it is safe to confirm automatically: strong enough and clearly ahead of the
+ * runner-up. Similar-looking rooms score almost the same, so a high score alone is not enough.
+ */
+export function pickAutoMatch(
+  ranked: readonly MatchResult[],
+  { minScore, minMargin }: AutoMatchOptions,
+): MatchResult | null {
+  const [top, second] = ranked;
+  if (!top || top.score < minScore) return null;
+  if (second && rankValue(top) - rankValue(second) < minMargin) return null;
+  return top;
 }
 
 /** Node id from a location link (`…?to=<node id>`), or null when `code` is not such a link. */

@@ -13,6 +13,7 @@ import { useOrientation } from './hooks/useOrientation';
 import { usePDR } from './hooks/usePDR';
 import { useTensorFlow } from './hooks/useTensorFlow';
 import { normalizeDeg } from './services/geometry';
+import type { LocationFix } from './services/locationPrior';
 import { deleteBend, deleteEdge, insertBend, moveBend } from './services/corridors';
 import { imageRatio, pickImageFile, readClipboardImage, readFloorPlanFile } from './services/imageFiles';
 import {
@@ -112,7 +113,11 @@ export default function App() {
     from: null,
     to: null,
   });
+  // Last location the user confirmed, in memory only: it gives the scanner a fading hint which
+  // places are likely, and is gone after a restart, when the user may be anywhere.
+  const [lastFix, setLastFix] = useState<LocationFix | null>(null);
   if (map && nav.mapId !== activeMapId) {
+    setLastFix(null);
     setNav({ mapId: activeMapId, from: defaultStart(map), to: null });
     setSelectedNodeId(null);
     setLinkFromId(null);
@@ -220,6 +225,7 @@ export default function App() {
   const relocate = useCallback(
     (from: string) => {
       setNav((n) => ({ ...n, from }));
+      setLastFix({ nodeId: from, at: Date.now() });
       resetSteps();
     },
     [resetSteps],
@@ -652,6 +658,7 @@ export default function App() {
             }}
             map={map}
             onDetected={relocate}
+            lastFix={lastFix}
           />
         )}
         {walkthroughOpen && selectedNode && (

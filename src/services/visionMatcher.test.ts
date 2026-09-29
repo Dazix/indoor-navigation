@@ -5,6 +5,7 @@ import {
   cosineSimilarity,
   EMBEDDING_SIZE,
   findNodeByCode,
+  pickAutoMatch,
   rankMatches,
 } from './visionMatcher';
 
@@ -110,5 +111,45 @@ describe('rankMatches', () => {
     const results = rankMatches([1, 0, 0], nodes, { minScore: 50, limit: 1 });
     expect(results).toHaveLength(1);
     expect(results[0]?.node.id).toBe('kitchen');
+  });
+
+  it('ranks by score plus boost but keeps the raw score', () => {
+    const similar: Record<string, MapNode> = {
+      roomA: trained('roomA', [[1, 0.2]]), // 98 %
+      roomB: trained('roomB', [[1, 0.3]]), // 96 %
+    };
+    expect(rankMatches([1, 0], similar).map((r) => r.node.id)).toEqual(['roomA', 'roomB']);
+    const boosted = rankMatches([1, 0], similar, { boosts: { roomB: 5 } });
+    expect(boosted.map((r) => r.node.id)).toEqual(['roomB', 'roomA']);
+    expect(boosted[0]).toMatchObject({ score: 96, boost: 5 });
+  });
+});
+
+describe('pickAutoMatch', () => {
+  const options = { minScore: 80, minMargin: 8 };
+  const result = (id: string, score: number, boost = 0) => ({
+    node: trained(id, []),
+    score,
+    thumbnail: null,
+    boost,
+  });
+
+  it('accepts a strong match that clearly leads', () => {
+    expect(pickAutoMatch([result('a', 92), result('b', 70)], options)?.node.id).toBe('a');
+    expect(pickAutoMatch([result('a', 92)], options)?.node.id).toBe('a');
+  });
+
+  it('rejects a weak best match', () => {
+    expect(pickAutoMatch([result('a', 75), result('b', 40)], options)).toBeNull();
+    expect(pickAutoMatch([], options)).toBeNull();
+  });
+
+  it('rejects similar-looking places whose scores are close', () => {
+    expect(pickAutoMatch([result('a', 92), result('b', 88)], options)).toBeNull();
+  });
+
+  it('counts the location boost in the lead', () => {
+    expect(pickAutoMatch([result('a', 90), result('b', 80)], options)?.node.id).toBe('a');
+    expect(pickAutoMatch([result('a', 90), result('b', 80, 5)], options)).toBeNull();
   });
 });
