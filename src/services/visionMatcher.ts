@@ -40,21 +40,56 @@ export function compactEmbedding(raw: ArrayLike<number>, size = EMBEDDING_SIZE):
   return normalize(picked);
 }
 
+/**
+ * Mean of every learned vector of the given length across the map, or null when there are none.
+ * In a large uniform room all views share most of their features ("looks like the open space");
+ * subtracting this mean before comparing leaves what tells the places apart.
+ */
+export function meanEmbedding(nodes: Record<string, MapNode>, size = EMBEDDING_SIZE): number[] | null {
+  const sum = new Array<number>(size).fill(0);
+  let count = 0;
+  for (const node of Object.values(nodes)) {
+    for (const sample of node.embeddings) {
+      if (sample.vector.length !== size) continue;
+      for (let i = 0; i < size; i++) sum[i] = (sum[i] as number) + (sample.vector[i] as number);
+      count++;
+    }
+  }
+  return count === 0 ? null : sum.map((v) => v / count);
+}
+
+/** Cosine similarity of `a` and `b` after subtracting `center` from both; see `meanEmbedding`. */
+export function centeredCosineSimilarity(
+  a: readonly number[],
+  b: readonly number[],
+  center: readonly number[],
+): number {
+  if (a.length !== center.length || b.length !== center.length) return cosineSimilarity(a, b);
+  return cosineSimilarity(
+    a.map((v, i) => v - (center[i] as number)),
+    b.map((v, i) => v - (center[i] as number)),
+  );
+}
+
 export interface RankOptions {
   /** Minimum score in percent for a node to be included. */
   minScore?: number;
   limit?: number;
   /** Ranking bonus per node id in percent points (see `proximityBoosts`); shown scores stay raw. */
   boosts?: Readonly<Record<string, number>>;
+  /** Map-wide mean vector (see `meanEmbedding`) removed before comparing; omit for plain cosine. */
+  center?: readonly number[] | null;
 }
 
 /** Scores every trained node by its best-matching learned viewpoint (nearest neighbour), best first. */
 export function rankMatches(
   liveVector: readonly number[],
   nodes: Record<string, MapNode>,
-  { minScore = 0, limit = Infinity, boosts = {} }: RankOptions = {},
+  { minScore = 0, limit = Infinity, boosts = {}, center = null }: RankOptions = {},
 ): MatchResult[] {
   const results: MatchResult[] = [];
+  const similarity = (a: readonly number[], b: readonly number[]) =>
+    center ? centeredCosineSimilarity(a, b, center) : cosineSimilarity(a, b);
 
   for (const node of Object.values(nodes)) {
     let best = 0;
@@ -62,7 +97,7 @@ export function rankMatches(
 
     if (node.embeddings.length > 0) {
       for (const sample of node.embeddings) {
-        const sim = cosineSimilarity(liveVector, sample.vector);
+        const sim = similarity(liveVector, sample.vector);
         if (sim > best) {
           best = sim;
           thumbnail = sample.thumbnail;

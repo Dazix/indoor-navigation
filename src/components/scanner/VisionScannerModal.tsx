@@ -8,6 +8,7 @@ import {
   findNodeByCode,
   isFrameReady,
   isTrained,
+  meanEmbedding,
   pickAutoMatch,
   rankMatches,
 } from '../../services/visionMatcher';
@@ -61,11 +62,13 @@ export default function VisionScannerModal({ onClose, map, onDetected, lastFix }
     [trainedNodes],
   );
   const barcodeSupported = typeof window !== 'undefined' && 'BarcodeDetector' in window;
+  // Removing what all views of the map share lets places in a uniform room be told apart.
+  const center = useMemo(() => meanEmbedding(map.nodes), [map.nodes]);
 
   // Latest values for the scan loop, which must not restart on every render.
-  const latest = useRef({ map, onDetected, onClose, tab, embed, lastFix });
+  const latest = useRef({ map, onDetected, onClose, tab, embed, lastFix, center });
   useEffect(() => {
-    latest.current = { map, onDetected, onClose, tab, embed, lastFix };
+    latest.current = { map, onDetected, onClose, tab, embed, lastFix, center };
   });
 
   const detectedRef = useRef(false);
@@ -100,7 +103,7 @@ export default function VisionScannerModal({ onClose, map, onDetected, lastFix }
       const video = videoRef.current;
       if (busy || detectedRef.current || !isFrameReady(video)) return;
       busy = true;
-      const { map: currentMap, tab: currentTab, embed, lastFix: fix } = latest.current;
+      const { map: currentMap, tab: currentTab, embed, lastFix: fix, center: mean } = latest.current;
 
       const scan = async () => {
         if (currentTab === 'visual') {
@@ -109,6 +112,7 @@ export default function VisionScannerModal({ onClose, map, onDetected, lastFix }
             minScore: MIN_SCORE,
             limit: 4,
             boosts: proximityBoosts(currentMap, fix, Date.now()),
+            center: mean,
           });
           setResults(ranked);
           const top = pickAutoMatch(ranked, { minScore: AUTO_SCORE, minMargin: AUTO_MARGIN });

@@ -2,10 +2,12 @@ import { describe, expect, it } from 'vitest';
 import type { MapNode } from '../../types/map';
 import {
   centerCropRect,
+  centeredCosineSimilarity,
   compactEmbedding,
   cosineSimilarity,
   EMBEDDING_SIZE,
   findNodeByCode,
+  meanEmbedding,
   pickAutoMatch,
   rankMatches,
 } from '../visionMatcher';
@@ -173,5 +175,31 @@ describe('pickAutoMatch', () => {
   it('counts the location boost in the lead', () => {
     expect(pickAutoMatch([result('a', 90), result('b', 80)], options)?.node.id).toBe('a');
     expect(pickAutoMatch([result('a', 90), result('b', 80, 5)], options)).toBeNull();
+  });
+});
+
+describe('meanEmbedding and centred ranking', () => {
+  const nodes = {
+    a: trained('a', [[1, 0.2, 0]]),
+    b: trained('b', [[1, 0, 0.2]]),
+  };
+  const live = [1, 0.15, 0.05];
+
+  it('averages all vectors of the expected size', () => {
+    expect(meanEmbedding(nodes, 3)).toEqual([1, 0.1, 0.1]);
+    expect(meanEmbedding(nodes, 5)).toBeNull();
+  });
+
+  it('separates places that share a dominant common component', () => {
+    const plain = rankMatches(live, nodes).map((r) => r.score);
+    expect(Math.abs((plain[0] ?? 0) - (plain[1] ?? 0))).toBeLessThan(5);
+
+    const centred = rankMatches(live, nodes, { center: meanEmbedding(nodes, 3) });
+    expect(centred.map((r) => r.node.id)[0]).toBe('a');
+    expect((centred[0]?.score ?? 0) - (centred[1]?.score ?? 100)).toBeGreaterThan(50);
+  });
+
+  it('falls back to plain cosine when the centre has another length', () => {
+    expect(centeredCosineSimilarity([1, 0], [1, 0], [0, 0, 0])).toBe(1);
   });
 });
