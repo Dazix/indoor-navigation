@@ -26,7 +26,7 @@ import {
 } from '../../services/mapEditing';
 import { buildNodeLink, MAP_FILE_ACCEPT } from '../../services/mapSharing';
 import { distance } from '../../services/geometry';
-import type { MapData, MapMetadata, MapNode, Point } from '../../types/map';
+import type { GeoPoint, MapData, MapMetadata, MapNode, Point } from '../../types/map';
 import type { EditorTool } from '../../types/navigation';
 import { LocationSearch } from '../map/LocationSearch';
 import { Button } from '../ui/Button';
@@ -314,6 +314,13 @@ export function EditorSidebar(props: EditorSidebarProps) {
         </p>
       </section>
 
+      <GeoSection
+        geo={map.metadata.geo}
+        onChange={(geo) => {
+          props.onMetadataChange({ geo });
+        }}
+      />
+
       <section className="flex flex-col gap-2">
         <h2 className={heading}>Floor plan & data</h2>
         <input
@@ -563,6 +570,100 @@ function MeasurePanel({
  * Width : height of the map. Edits are kept locally and applied on Enter / blur, because the map
  * normalises the ratio (longer side 100) and would rewrite the fields while typing.
  */
+/** Parses "50.0755, 14.4378" (as copied from a map app) into a valid position. */
+function parseLatLng(text: string): GeoPoint | null {
+  const m = /^\s*(-?\d+(?:\.\d+)?)\s*[,;\s]\s*(-?\d+(?:\.\d+)?)\s*$/.exec(text);
+  if (!m) return null;
+  const lat = parseFloat(m[1] ?? '');
+  const lng = parseFloat(m[2] ?? '');
+  return Math.abs(lat) <= 90 && Math.abs(lng) <= 180 ? { lat, lng } : null;
+}
+
+function GeoSection({
+  geo,
+  onChange,
+}: {
+  geo: GeoPoint | undefined;
+  onChange: (geo: GeoPoint | undefined) => void;
+}) {
+  const [draft, setDraft] = useState<string | null>(null);
+  const [status, setStatus] = useState<string | null>(null);
+  const shown = draft ?? (geo ? `${geo.lat.toFixed(6)}, ${geo.lng.toFixed(6)}` : '');
+  const invalid = draft !== null && draft.trim() !== '' && parseLatLng(draft) === null;
+
+  const commit = () => {
+    if (draft === null) return;
+    const parsed = parseLatLng(draft);
+    if (parsed) onChange(parsed);
+    else if (draft.trim() === '') onChange(undefined);
+    setDraft(null);
+  };
+
+  const useMyLocation = () => {
+    if (!('geolocation' in navigator)) {
+      setStatus('Location is not available in this browser.');
+      return;
+    }
+    setStatus('Locating…');
+    navigator.geolocation.getCurrentPosition(
+      ({ coords }) => {
+        onChange({ lat: coords.latitude, lng: coords.longitude });
+        setDraft(null);
+        setStatus(null);
+      },
+      () => {
+        setStatus('Could not get the location (permission denied or unavailable).');
+      },
+      { enableHighAccuracy: true, timeout: 10_000 },
+    );
+  };
+
+  return (
+    <section className="flex flex-col gap-2">
+      <h2 className={heading}>Map location</h2>
+      <label className="flex min-w-0 flex-col gap-1 text-[11px] font-semibold text-slate-600 dark:text-slate-400">
+        Latitude, longitude
+        <input
+          className={`${input} tabular-nums ${invalid ? 'border-red-500' : ''}`}
+          type="text"
+          inputMode="decimal"
+          placeholder="50.075500, 14.437800"
+          value={shown}
+          onChange={(e) => {
+            setDraft(e.target.value);
+          }}
+          onBlur={commit}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') commit();
+            if (e.key === 'Escape') setDraft(null);
+          }}
+        />
+      </label>
+      <div className="flex gap-2">
+        <Button variant="secondary" size="sm" fullWidth onClick={useMyLocation}>
+          Use my location
+        </Button>
+        {geo && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              onChange(undefined);
+              setDraft(null);
+            }}
+          >
+            Clear
+          </Button>
+        )}
+      </div>
+      {status && <p className="text-[10px] text-slate-500">{status}</p>}
+      <p className="text-[10px] leading-relaxed text-slate-500">
+        When the app opens without a link, it switches to the map nearest to the device (within 500 m).
+      </p>
+    </section>
+  );
+}
+
 function AspectInput({
   width,
   height,

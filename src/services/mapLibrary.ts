@@ -1,7 +1,7 @@
 import { createStore, del, get, set } from 'idb-keyval';
 import { z } from 'zod';
 import type { MapData, MapLibrary, MapSummary } from '../types/map';
-import { LEGACY_STORAGE_KEY, parseMapData } from './mapStorage';
+import { GeoPointSchema, LEGACY_STORAGE_KEY, parseMapData } from './mapStorage';
 
 /** localStorage key of the library index (map names + active map). Map bodies are in IndexedDB. */
 export const LIBRARY_STORAGE_KEY = 'indoor_nav_library_v1';
@@ -16,6 +16,7 @@ const MapLibrarySchema = z.object({
       name: z.string(),
       updatedAt: z.number(),
       sourceUrl: z.string().optional(),
+      geo: GeoPointSchema.optional(),
     }),
   ),
 });
@@ -58,6 +59,11 @@ export function uniqueName(library: MapLibrary, base: string): string {
   let i = 2;
   while (taken.has(`${base} (${i})`)) i++;
   return `${base} (${i})`;
+}
+
+/** Library index fields that mirror the map body; refresh them whenever a body is written. */
+export function summaryFields(map: MapData): Pick<MapSummary, 'name' | 'geo'> {
+  return { name: map.metadata.name, geo: map.metadata.geo };
 }
 
 export function addToLibrary(library: MapLibrary, summary: MapSummary, activate = true): MapLibrary {

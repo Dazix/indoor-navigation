@@ -147,6 +147,17 @@ file as a data URL.
 Views recorded on one phone work on others, but accuracy drops with a very different camera or lighting.
 Recording a walkthrough with two different phones helps.
 
+## Opening the nearest map
+
+In the Editor, **Map location** stores the building's latitude and longitude with the map. Type the
+coordinates as copied from a map app, or press **Use my location** while standing in the building.
+
+When the app opens without a link, it asks for the device position once and switches to the map with the
+nearest location, if that map is within 500 m. Nothing changes when the position is denied or unavailable,
+when no map is close enough, when the maps have no location, or when you pick a map before the position
+arrives. Links win over this: `?map=`, `?to=` and the cloud links (`?cfg=`, `?cloudMap=`) open what they
+name and skip the automatic switch.
+
 ## Cloud sync (optional Firebase backend)
 
 By default everything stays in the browser. If your team wants one shared map that stays up to date on every

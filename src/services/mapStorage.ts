@@ -40,6 +40,11 @@ const RoomSchema = z.object({
     .default('#e2e8f0'),
 });
 
+export const GeoPointSchema = z.object({
+  lat: z.number().min(-90).max(90),
+  lng: z.number().min(-180).max(180),
+});
+
 const MapMetadataSchema = z.object({
   name: z.string().max(200).default('Office'),
   version: z.number().int().nonnegative().default(1),
@@ -48,6 +53,7 @@ const MapMetadataSchema = z.object({
   width: z.number().positive().max(100).default(100),
   height: z.number().positive().max(100).default(100),
   floorPlanRotationDeg: z.number().min(-360).max(360).default(0),
+  geo: GeoPointSchema.optional(),
 });
 
 /** Uploaded image (data URL), absolute http(s) URL, or an asset path relative to the app base. */

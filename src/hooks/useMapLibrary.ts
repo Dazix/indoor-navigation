@@ -13,6 +13,7 @@ import {
   readMap,
   removeFromLibrary,
   uniqueName,
+  summaryFields,
   updateSummary,
   withName,
   writeMap,
@@ -84,7 +85,7 @@ export function useMapLibrary({ onEdited }: { onEdited?: (mapId: string) => void
       await writeMap(pending.id, pending.map);
       setSaveError(null);
       setLibrary((lib) =>
-        updateSummary(lib, pending.id, { name: pending.map.metadata.name, updatedAt: Date.now() }),
+        updateSummary(lib, pending.id, { ...summaryFields(pending.map), updatedAt: Date.now() }),
       );
     } catch (err) {
       setSaveError(`Could not save the map: ${errorMessage(err)}`);
@@ -103,7 +104,7 @@ export function useMapLibrary({ onEdited }: { onEdited?: (mapId: string) => void
         const id = createMapId();
         await writeMap(id, map);
         if (legacy) clearLegacyMap();
-        setLibrary((lib) => addToLibrary(lib, { id, name: map.metadata.name, updatedAt: Date.now() }));
+        setLibrary((lib) => addToLibrary(lib, { id, ...summaryFields(map), updatedAt: Date.now() }));
       } catch (err) {
         setError(errorMessage(err));
       } finally {
@@ -196,7 +197,7 @@ export function useMapLibrary({ onEdited }: { onEdited?: (mapId: string) => void
           lib,
           {
             id,
-            name: named.metadata.name,
+            ...summaryFields(named),
             updatedAt: Date.now(),
             ...(sourceUrl ? { sourceUrl } : {}),
           },
@@ -228,7 +229,7 @@ export function useMapLibrary({ onEdited }: { onEdited?: (mapId: string) => void
       }
       onEditedRef.current?.(existing.id);
       setLibrary((lib) => ({
-        ...updateSummary(lib, existing.id, { name: named.metadata.name, updatedAt: Date.now() }),
+        ...updateSummary(lib, existing.id, { ...summaryFields(named), updatedAt: Date.now() }),
         activeMapId: existing.id,
       }));
       return existing.id;
@@ -251,7 +252,7 @@ export function useMapLibrary({ onEdited }: { onEdited?: (mapId: string) => void
         savedRef.current = map;
         setActive({ id, history: createHistory(map) });
       }
-      setLibrary((lib) => updateSummary(lib, id, { name: map.metadata.name, updatedAt: Date.now() }));
+      setLibrary((lib) => updateSummary(lib, id, { ...summaryFields(map), updatedAt: Date.now() }));
     },
     [active?.id, setLibrary],
   );
