@@ -1,15 +1,21 @@
 import { describe, expect, it } from 'vitest';
 import {
-  activeCloudConfig,
+  applyUrlConfig,
   buildConfigLink,
   decodeFirebaseConfig,
+  EMPTY_CLOUD_CONFIG,
+  enableMap,
   encodeFirebaseConfig,
+  findSource,
   hasUrlConfig,
-  mergeStoredCloudConfig,
   parseFirebaseSnippet,
   parseStoredCloudConfig,
   parseUrlConfig,
+  removeSource,
+  setEnabledMaps,
+  sourceIdFor,
   stripConfigParams,
+  upsertSource,
   type FirebaseConfig,
 } from '../cloudConfig';
 
@@ -78,28 +84,6 @@ describe('URL config', () => {
   });
 });
 
-describe('activeCloudConfig', () => {
-  it('is null without Firebase credentials, which keeps the app purely local', () => {
-    expect(activeCloudConfig({})).toBeNull();
-    expect(activeCloudConfig({ mapId: 'm1' })).toBeNull();
-  });
-
-  it('returns the credentials with or without a map id', () => {
-    expect(activeCloudConfig({ firebase })).toEqual({ firebase });
-    expect(activeCloudConfig({ firebase, mapId: 'm1' })).toEqual({ firebase, mapId: 'm1' });
-  });
-});
-
-describe('mergeStoredCloudConfig', () => {
-  it('lets incoming values win and keeps the rest', () => {
-    expect(mergeStoredCloudConfig({ firebase, mapId: 'old' }, { mapId: 'new' })).toEqual({
-      firebase,
-      mapId: 'new',
-    });
-    expect(mergeStoredCloudConfig({ mapId: 'old' }, { firebase })).toEqual({ firebase, mapId: 'old' });
-  });
-});
-
 describe('parseFirebaseSnippet', () => {
   const consoleSnippet = `
     // Import the functions you need from the SDKs you need
@@ -139,10 +123,76 @@ describe('parseFirebaseSnippet', () => {
   });
 });
 
+const liberec: FirebaseConfig = { ...firebase, projectId: 'liberec', authDomain: 'liberec.firebaseapp.com' };
+
 describe('parseStoredCloudConfig', () => {
-  it('validates persisted data', () => {
-    expect(parseStoredCloudConfig({ firebase, mapId: 'm1' })).toEqual({ firebase, mapId: 'm1' });
-    expect(parseStoredCloudConfig({ mapId: 'a/b' })).toBeNull();
+  it('validates persisted sources', () => {
+    const stored = upsertSource(EMPTY_CLOUD_CONFIG, firebase);
+    expect(parseStoredCloudConfig(stored)).toEqual(stored);
+    expect(parseStoredCloudConfig({ sources: [{ id: 'x' }] })).toBeNull();
     expect(parseStoredCloudConfig('nope')).toBeNull();
+  });
+
+  it('migrates the single-config shape of the first cloud version', () => {
+    expect(parseStoredCloudConfig({ firebase, mapId: 'm1' })).toEqual({
+      sources: [{ id: 'demo', label: 'demo', firebase, enabledMapIds: ['m1'] }],
+    });
+    expect(parseStoredCloudConfig({ firebase })?.sources[0]?.enabledMapIds).toEqual([]);
+    expect(parseStoredCloudConfig({})).toEqual(EMPTY_CLOUD_CONFIG);
+    expect(parseStoredCloudConfig({ mapId: 'a/b' })).toBeNull();
+  });
+});
+
+describe('sources', () => {
+  it('derives a stable, path-safe id from the project', () => {
+    expect(sourceIdFor({ ...firebase, projectId: 'my.project/1' })).toBe('my_project_1');
+  });
+
+  it('adds sources and updates the one for the same project instead of duplicating it', () => {
+    const two = upsertSource(upsertSource(EMPTY_CLOUD_CONFIG, firebase, 'Praha'), liberec);
+    expect(two.sources.map((s) => [s.id, s.label])).toEqual([
+      ['demo', 'Praha'],
+      ['liberec', 'liberec'],
+    ]);
+    const updated = upsertSource(enableMap(two, 'demo', 'm1'), { ...firebase, apiKey: 'new' });
+    expect(updated.sources).toHaveLength(2);
+    expect(updated.sources[0]).toMatchObject({ label: 'Praha', enabledMapIds: ['m1'] });
+    expect(updated.sources[0]?.firebase.apiKey).toBe('new');
+  });
+
+  it('sets, enables and de-duplicates enabled maps per source', () => {
+    let config = upsertSource(upsertSource(EMPTY_CLOUD_CONFIG, firebase), liberec);
+    config = setEnabledMaps(config, 'demo', ['a', 'b', 'a']);
+    config = enableMap(config, 'demo', 'b');
+    config = enableMap(config, 'unknown', 'z');
+    expect(findSource(config, 'demo')?.enabledMapIds).toEqual(['a', 'b']);
+    expect(findSource(config, 'liberec')?.enabledMapIds).toEqual([]);
+  });
+
+  it('removes a source', () => {
+    const config = upsertSource(upsertSource(EMPTY_CLOUD_CONFIG, firebase), liberec);
+    expect(removeSource(config, 'demo').sources.map((s) => s.id)).toEqual(['liberec']);
+  });
+});
+
+describe('applyUrlConfig', () => {
+  it('adds a source for link credentials and enables the map on it', () => {
+    const config = applyUrlConfig(EMPTY_CLOUD_CONFIG, { firebase, mapId: 'm1' });
+    expect(config.sources).toEqual([{ id: 'demo', label: 'demo', firebase, enabledMapIds: ['m1'] }]);
+  });
+
+  it('enables a map id-only link on the only source, and ignores it with several or none', () => {
+    const one = upsertSource(EMPTY_CLOUD_CONFIG, firebase);
+    expect(applyUrlConfig(one, { mapId: 'm1' }).sources[0]?.enabledMapIds).toEqual(['m1']);
+    expect(applyUrlConfig(EMPTY_CLOUD_CONFIG, { mapId: 'm1' })).toEqual(EMPTY_CLOUD_CONFIG);
+    const two = upsertSource(one, liberec);
+    expect(applyUrlConfig(two, { mapId: 'm1' })).toEqual(two);
+  });
+
+  it('puts the map on the source of the link credentials when there are several', () => {
+    const two = upsertSource(upsertSource(EMPTY_CLOUD_CONFIG, firebase), liberec);
+    const applied = applyUrlConfig(two, { firebase: liberec, mapId: 'm9' });
+    expect(findSource(applied, 'liberec')?.enabledMapIds).toEqual(['m9']);
+    expect(findSource(applied, 'demo')?.enabledMapIds).toEqual([]);
   });
 });

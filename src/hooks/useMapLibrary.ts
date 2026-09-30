@@ -186,18 +186,22 @@ export function useMapLibrary({ onEdited }: { onEdited?: (mapId: string) => void
   }, []);
 
   const addMap = useCallback(
-    async (map: MapData, sourceUrl?: string) => {
+    async (map: MapData, sourceUrl?: string, activate = true) => {
       await flush();
       const id = createMapId();
       const named = withName(map, uniqueName(library, map.metadata.name));
       await writeMap(id, named);
       setLibrary((lib) =>
-        addToLibrary(lib, {
-          id,
-          name: named.metadata.name,
-          updatedAt: Date.now(),
-          ...(sourceUrl ? { sourceUrl } : {}),
-        }),
+        addToLibrary(
+          lib,
+          {
+            id,
+            name: named.metadata.name,
+            updatedAt: Date.now(),
+            ...(sourceUrl ? { sourceUrl } : {}),
+          },
+          activate,
+        ),
       );
       return id;
     },
@@ -324,6 +328,11 @@ export function useMapLibrary({ onEdited }: { onEdited?: (mapId: string) => void
     switchMap,
     createMap,
     importMap: addMap,
+    /** Adds a map downloaded from the cloud; only opens it when `activate` is set. */
+    importCloudMap: useCallback(
+      (map: MapData, activate: boolean) => addMap(map, undefined, activate),
+      [addMap],
+    ),
     importFromUrl,
     replaceMap,
     findBySource: findSource,

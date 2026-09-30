@@ -55,6 +55,42 @@ const MapHeadSchema = z.object({
 
 export type MapHead = z.infer<typeof MapHeadSchema>;
 
+/**
+ * Small catalog document next to each map, so a source's maps can be listed without downloading the
+ * map documents themselves. Written together with the main document.
+ */
+const MapMetaSchema = z.object({
+  kind: z.literal('meta'),
+  mapId: z.string().min(1),
+  name: z.string(),
+  revision: z.number().int().min(0),
+  updatedAt: z.number(),
+  nodeCount: z.number().int().min(0),
+});
+
+export type MapMeta = z.infer<typeof MapMetaSchema>;
+
+/** Map ids cannot contain `~`, so this never collides with a map or chunk id. */
+export function metaDocId(mapId: string): string {
+  return `${mapId}~meta`;
+}
+
+export function metaFromHead(mapId: string, head: MapHead): MapMeta {
+  return {
+    kind: 'meta',
+    mapId,
+    name: head.name,
+    revision: head.revision,
+    updatedAt: head.updatedAt,
+    nodeCount: Object.keys(head.nodes).length,
+  };
+}
+
+export function parseMapMeta(raw: unknown): MapMeta | null {
+  const result = MapMetaSchema.safeParse(raw);
+  return result.success ? result.data : null;
+}
+
 export interface ChunkDoc {
   kind: 'chunk';
   mapId: string;

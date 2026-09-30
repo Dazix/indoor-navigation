@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-/** localStorage key for the cloud configuration entered in the UI or received through a link. */
+/** localStorage key for the cloud sources entered in the UI or received through a link (see `parseStoredCloudConfig` for the shape change). */
 export const CLOUD_CONFIG_STORAGE_KEY = 'indoor_nav_cloud_config_v1';
 /** Query parameter carrying a base64url-encoded Firebase web config. */
 export const CFG_URL_PARAM = 'cfg';
@@ -29,41 +29,121 @@ export type FirebaseConfig = z.infer<typeof FirebaseConfigSchema>;
 
 const CloudMapIdSchema = z.string().trim().regex(CLOUD_MAP_ID);
 
-/** What is persisted or received. A link may carry only the map id, for a device that is already set up. */
-export const StoredCloudConfigSchema = z.object({
+/** What a link carries (and what the first cloud version stored): credentials and/or one map id. */
+const UrlConfigSchema = z.object({
   firebase: FirebaseConfigSchema.optional(),
   mapId: CloudMapIdSchema.optional(),
 });
 
+export type UrlConfig = z.infer<typeof UrlConfigSchema>;
+
+/** A Firebase project plus the maps of it this device uses. Maps that are not listed are never downloaded. */
+const CloudSourceSchema = z.object({
+  id: z.string().min(1),
+  label: z.string().trim().min(1),
+  firebase: FirebaseConfigSchema,
+  enabledMapIds: z.array(CloudMapIdSchema),
+});
+
+export type CloudSource = z.infer<typeof CloudSourceSchema>;
+
+/** What is persisted: every configured source. No sources keeps the app purely local. */
+const StoredCloudConfigSchema = z.object({ sources: z.array(CloudSourceSchema) });
+
 export type StoredCloudConfig = z.infer<typeof StoredCloudConfigSchema>;
 
-export interface CloudConfig {
-  firebase: FirebaseConfig;
-  mapId?: string;
+export const EMPTY_CLOUD_CONFIG: StoredCloudConfig = { sources: [] };
+
+/** Stable id of a source, derived from the Firebase project so the same project is never added twice. */
+export function sourceIdFor(firebase: FirebaseConfig): string {
+  return firebase.projectId.replace(/[^A-Za-z0-9_-]/g, '_');
 }
 
-export function parseStoredCloudConfig(raw: unknown): StoredCloudConfig | null {
-  const result = StoredCloudConfigSchema.safeParse(raw);
-  return result.success ? result.data : null;
+function sourceFromUrlConfig(legacy: UrlConfig): CloudSource[] {
+  if (!legacy.firebase) return [];
+  return [
+    {
+      id: sourceIdFor(legacy.firebase),
+      label: legacy.firebase.projectId,
+      firebase: legacy.firebase,
+      enabledMapIds: legacy.mapId ? [legacy.mapId] : [],
+    },
+  ];
 }
 
 /**
- * The active cloud configuration, or null when no Firebase credentials were entered or received, which
- * keeps the app purely local. Credentials only ever come from the settings dialog or a link.
+ * Validates persisted data. The first cloud version stored a single `{ firebase, mapId }` under the same
+ * key; it is converted to one source here and written in the new shape on the next save.
  */
-export function activeCloudConfig(stored: StoredCloudConfig): CloudConfig | null {
-  if (!stored.firebase) return null;
-  return { firebase: stored.firebase, ...(stored.mapId ? { mapId: stored.mapId } : {}) };
+export function parseStoredCloudConfig(raw: unknown): StoredCloudConfig | null {
+  const current = StoredCloudConfigSchema.safeParse(raw);
+  if (current.success) return current.data;
+  if (typeof raw === 'object' && raw !== null && 'sources' in raw) return null;
+  const legacy = UrlConfigSchema.safeParse(raw);
+  return legacy.success ? { sources: sourceFromUrlConfig(legacy.data) } : null;
 }
 
-/** Incoming values replace the current ones; parts the incoming config does not carry are kept. */
-export function mergeStoredCloudConfig(
-  current: StoredCloudConfig,
-  incoming: StoredCloudConfig,
+export function findSource(config: StoredCloudConfig, sourceId: string | undefined): CloudSource | undefined {
+  return sourceId === undefined ? undefined : config.sources.find((s) => s.id === sourceId);
+}
+
+/** Adds a source, or replaces the credentials (and label, if given) of the one for the same project. */
+export function upsertSource(
+  config: StoredCloudConfig,
+  firebase: FirebaseConfig,
+  label?: string,
 ): StoredCloudConfig {
-  const firebase = incoming.firebase ?? current.firebase;
-  const mapId = incoming.mapId ?? current.mapId;
-  return { ...(firebase ? { firebase } : {}), ...(mapId ? { mapId } : {}) };
+  const id = sourceIdFor(firebase);
+  const existing = findSource(config, id);
+  if (!existing) {
+    const source: CloudSource = {
+      id,
+      label: label?.trim() || firebase.projectId,
+      firebase,
+      enabledMapIds: [],
+    };
+    return { sources: [...config.sources, source] };
+  }
+  return {
+    sources: config.sources.map((s) =>
+      s.id === id ? { ...s, firebase, ...(label?.trim() ? { label: label.trim() } : {}) } : s,
+    ),
+  };
+}
+
+export function removeSource(config: StoredCloudConfig, sourceId: string): StoredCloudConfig {
+  return { sources: config.sources.filter((s) => s.id !== sourceId) };
+}
+
+/** Replaces the enabled maps of a source (duplicates dropped, order kept). */
+export function setEnabledMaps(
+  config: StoredCloudConfig,
+  sourceId: string,
+  mapIds: readonly string[],
+): StoredCloudConfig {
+  const unique = [...new Set(mapIds)];
+  return { sources: config.sources.map((s) => (s.id === sourceId ? { ...s, enabledMapIds: unique } : s)) };
+}
+
+export function enableMap(config: StoredCloudConfig, sourceId: string, mapId: string): StoredCloudConfig {
+  const source = findSource(config, sourceId);
+  return source ? setEnabledMaps(config, sourceId, [...source.enabledMapIds, mapId]) : config;
+}
+
+/**
+ * Applies what a launch link carries: credentials add or update a source, and a map id is enabled on that
+ * source (or on the only source when the link has no credentials).
+ */
+export function applyUrlConfig(current: StoredCloudConfig, incoming: UrlConfig): StoredCloudConfig {
+  let config = current;
+  let targetId: string | undefined;
+  if (incoming.firebase) {
+    config = upsertSource(config, incoming.firebase);
+    targetId = sourceIdFor(incoming.firebase);
+  } else if (config.sources.length === 1) {
+    targetId = config.sources[0]?.id;
+  }
+  return incoming.mapId && targetId ? enableMap(config, targetId, incoming.mapId) : config;
 }
 
 function toBase64Url(text: string): string {
@@ -93,7 +173,7 @@ export function decodeFirebaseConfig(value: string): FirebaseConfig | null {
 }
 
 /** Configuration carried by a URL query string, or null when it has none (or only invalid values). */
-export function parseUrlConfig(search: string): StoredCloudConfig | null {
+export function parseUrlConfig(search: string): UrlConfig | null {
   const params = new URLSearchParams(search);
   const rawCfg = params.get(CFG_URL_PARAM);
   const rawMapId = params.get(CLOUD_MAP_URL_PARAM);
@@ -117,7 +197,7 @@ export function stripConfigParams(href: string): string {
 }
 
 /** Pre-configured app link an administrator can hand out. Keeps the hash out, it carries the editor mode. */
-export function buildConfigLink(appUrl: string, config: StoredCloudConfig): string {
+export function buildConfigLink(appUrl: string, config: UrlConfig): string {
   const url = new URL(appUrl);
   url.search = '';
   url.hash = '';

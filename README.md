@@ -319,7 +319,27 @@ build-time environment variables:
 2. **Through a link** (see below).
 
 Either way the settings are stored in `localStorage` on that device. Without settings the app is purely local
-and shows no cloud status. **Remove settings** in the dialog deletes them again.
+and shows no cloud status. The trash button on a project in the dialog removes it again; its maps stay on
+the device as local maps and stop syncing.
+
+### Several Firebase projects and choosing maps
+
+A device can be connected to more than one Firebase project, for example one per region or company. **Add
+another Firebase project** in the **Cloud sync** dialog adds it; adding a project that is already listed
+updates its credentials. Every project has its own Google sign-in.
+
+Connecting a project does not download anything. Open **Choose maps** on the project to list the maps it
+holds, tick the ones this device should use (say only the Prague map, never the Liberec one) and press **Use
+selected maps**. Ticked maps are downloaded and kept in sync. Unticking a map stops syncing it and keeps the
+local copy; delete the copy from the map manager if you do not want it. A ticked map whose local copy you
+delete comes back on the next start, so untick it instead.
+
+When you publish a map that is not linked to the cloud yet and more than one project is connected, the dialog
+asks which project to publish to.
+
+The list comes from a small catalog document that is stored next to every map (`<mapId>~meta` in the same
+`indoorMaps` collection, so the security rules above cover it). Maps published before the catalog existed
+show up in the list after their next publish.
 
 ### Sharing the configuration by URL
 
@@ -330,8 +350,9 @@ credential form.
 2. Open **Cloud sync** and click **Copy configuration link**. The link looks like
    `https://<host>/indoor-navigation/?cfg=<base64url>&cloudMap=<map id>`:
    - `cfg` is the Firebase web config (JSON, base64url encoded).
-   - `cloudMap` is the id of the map to open. Either parameter may be used alone, for example
-     `?cloudMap=headquarters-floor-2` on a device that is already connected to the project.
+   - `cloudMap` is the id of the map to open. It is ticked on the project of the same link (or on the only
+     connected project) and opened. Either parameter may be used alone, for example
+     `?cloudMap=headquarters-floor-2` on a device that is connected to exactly one project.
 3. Send it by e-mail or chat, or print it as a QR code. The format is plain text, so any QR generator works.
 
 When someone opens the link the app saves the settings on their device, downloads the map (signing in is not

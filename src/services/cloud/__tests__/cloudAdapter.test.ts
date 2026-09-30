@@ -3,7 +3,7 @@ import type { MapData } from '../../../types/map';
 import type { EmbeddingSample } from '../../../types/vision';
 import { parseMapData } from '../../mapStorage';
 import { createCloudAdapter } from '../cloudAdapter';
-import { CHUNK_CHARS, type MapHead } from '../mapDocs';
+import { CHUNK_CHARS, type MapHead, type MapMeta } from '../mapDocs';
 import { CloudError, type AuthFacade, type CloudUser, type DocStore } from '../types';
 
 const MAP_ID = 'office';
@@ -48,15 +48,25 @@ function fakeStore() {
       for (const { id, data } of entries) docs.set(id, structuredClone(data));
       return Promise.resolve();
     }),
-    commitHead: vi.fn((id: string, head: MapHead, expected: number | null) => {
-      const current = docs.get(id) as MapHead | undefined;
-      if ((current?.revision ?? null) !== expected) {
-        return Promise.reject(new CloudError('conflict', 'revision moved'));
-      }
-      docs.set(id, structuredClone(head));
-      emit(id);
-      return Promise.resolve();
-    }),
+    commitHead: vi.fn(
+      (id: string, head: MapHead, expected: number | null, meta: { id: string; data: MapMeta }) => {
+        const current = docs.get(id) as MapHead | undefined;
+        if ((current?.revision ?? null) !== expected) {
+          return Promise.reject(new CloudError('conflict', 'revision moved'));
+        }
+        docs.set(id, structuredClone(head));
+        docs.set(meta.id, structuredClone(meta.data));
+        emit(id);
+        return Promise.resolve();
+      },
+    ),
+    listMeta: vi.fn(() =>
+      Promise.resolve(
+        [...docs.values()]
+          .filter((d) => (d as { kind?: string }).kind === 'meta')
+          .map((d) => structuredClone(d)),
+      ),
+    ),
     deleteDocs: vi.fn((ids: readonly string[]) => {
       for (const id of ids) docs.delete(id);
       return Promise.resolve();
@@ -97,6 +107,44 @@ function fakeAuth(initial: CloudUser | null = user): AuthFacade {
 
 const writtenIds = (store: DocStore) =>
   vi.mocked(store.writeDocs).mock.calls.flatMap(([entries]) => entries.map((e) => e.id));
+
+describe('catalog', () => {
+  it('lists published maps by name without reading map or chunk documents', async () => {
+    const { store } = fakeStore();
+    const adapter = createCloudAdapter(store, fakeAuth(), () => 1000);
+    const zoo = { ...makeMap(), metadata: { ...makeMap().metadata, name: 'Zoo' } };
+    await adapter.push('zoo', zoo, null);
+    await adapter.push(MAP_ID, makeMap(), null);
+    vi.mocked(store.get).mockClear();
+
+    expect(await adapter.listMaps()).toEqual([
+      { kind: 'meta', mapId: MAP_ID, name: 'Office', revision: 1, updatedAt: 1000, nodeCount: 2 },
+      { kind: 'meta', mapId: 'zoo', name: 'Zoo', revision: 1, updatedAt: 1000, nodeCount: 2 },
+    ]);
+    expect(store.get).not.toHaveBeenCalled();
+  });
+
+  it('follows the revision on every publish', async () => {
+    const adapter = createCloudAdapter(fakeStore().store, fakeAuth());
+    await adapter.push(MAP_ID, makeMap(), null);
+    await adapter.push(MAP_ID, makeMap(), 1);
+    expect((await adapter.listMaps())[0]?.revision).toBe(2);
+  });
+
+  it('skips malformed catalog documents and lists nothing for an empty project', async () => {
+    const { store, docs } = fakeStore();
+    const adapter = createCloudAdapter(store, fakeAuth());
+    expect(await adapter.listMaps()).toEqual([]);
+    docs.set('broken~meta', { kind: 'meta', mapId: 5 });
+    expect(await adapter.listMaps()).toEqual([]);
+  });
+
+  it('lets visitors list without signing in', async () => {
+    const { store } = fakeStore();
+    await createCloudAdapter(store, fakeAuth()).push(MAP_ID, makeMap(), null);
+    expect(await createCloudAdapter(store, fakeAuth(null)).listMaps()).toHaveLength(1);
+  });
+});
 
 describe('push and pull', () => {
   it('round-trips a map with learned views and a multi-chunk floor plan', async () => {
@@ -166,9 +214,9 @@ describe('conflicts', () => {
     await adapter.push(MAP_ID, makeMap(), null);
     const realCommit = vi.mocked(store.commitHead).getMockImplementation();
     // Another client commits between this push's check and its commit.
-    vi.mocked(store.commitHead).mockImplementationOnce(async (id, head, expected) => {
-      await realCommit?.(id, { ...head, revision: 2 }, expected);
-      return realCommit?.(id, head, expected);
+    vi.mocked(store.commitHead).mockImplementationOnce(async (id, head, expected, meta) => {
+      await realCommit?.(id, { ...head, revision: 2 }, expected, meta);
+      return realCommit?.(id, head, expected, meta);
     });
 
     await expect(adapter.push(MAP_ID, makeMap(0, 3), 1)).rejects.toMatchObject({ code: 'conflict' });

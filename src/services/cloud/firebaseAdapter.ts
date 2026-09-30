@@ -104,7 +104,21 @@ export function createFirebaseAdapter(config: FirebaseConfig): CloudAdapter {
       }
     },
 
-    commitHead: async (id, head, expectedRevision) => {
+    listMeta: async () => {
+      const s = await sdk();
+      const snap = await withTimeout(
+        s.firestore.getDocs(
+          s.firestore.query(
+            s.firestore.collection(s.db, CLOUD_COLLECTION),
+            s.firestore.where('kind', '==', 'meta'),
+          ),
+        ),
+        REQUEST_TIMEOUT_MS,
+      );
+      return snap.docs.map((d) => d.data());
+    },
+
+    commitHead: async (id, head, expectedRevision, meta) => {
       const s = await sdk();
       await withTimeout(
         s.firestore.runTransaction(s.db, async (tx) => {
@@ -114,6 +128,7 @@ export function createFirebaseAdapter(config: FirebaseConfig): CloudAdapter {
             throw new CloudError('conflict', 'The map was changed in the cloud in the meantime');
           }
           tx.set(docRef(s, id), head as unknown as Record<string, unknown>);
+          tx.set(docRef(s, meta.id), meta.data as unknown as Record<string, unknown>);
         }),
         REQUEST_TIMEOUT_MS,
       );

@@ -4,6 +4,8 @@ import { z } from 'zod';
 export const SYNC_STATE_STORAGE_KEY = 'indoor_nav_sync_v1';
 
 const MapSyncEntrySchema = z.object({
+  /** Cloud source (Firebase project) the map lives in. Missing on entries from before sources existed. */
+  sourceId: z.string().min(1).optional(),
   /** Document id of the map in Firestore. */
   cloudMapId: z.string().min(1),
   /** Cloud revision this device last pulled or pushed; 0 when the map was never in the cloud. */
@@ -28,8 +30,37 @@ export function parseSyncState(raw: unknown): SyncState | null {
 }
 
 /** Links a local map to a cloud map id. Until the first push it counts as unsaved. */
-export function linkMap(state: SyncState, localMapId: string, cloudMapId: string): SyncState {
-  return { ...state, [localMapId]: { cloudMapId, baseRevision: 0, dirty: true, lastSyncedAt: null } };
+export function linkMap(
+  state: SyncState,
+  localMapId: string,
+  cloudMapId: string,
+  sourceId: string,
+): SyncState {
+  return {
+    ...state,
+    [localMapId]: { sourceId, cloudMapId, baseRevision: 0, dirty: true, lastSyncedAt: null },
+  };
+}
+
+/**
+ * Source of a linked map. Entries from before sources existed have none; they belong to the only source
+ * that the old single configuration was migrated to.
+ */
+export function entrySourceId(entry: MapSyncEntry, sources: readonly { id: string }[]): string | undefined {
+  return entry.sourceId ?? sources[0]?.id;
+}
+
+/** Local map ids linked to a cloud map of the given source, by cloud map id. */
+export function linkedLocalIds(
+  state: SyncState,
+  sourceId: string,
+  sources: readonly { id: string }[],
+): Map<string, string> {
+  const linked = new Map<string, string>();
+  for (const [localId, entry] of Object.entries(state)) {
+    if (entrySourceId(entry, sources) === sourceId) linked.set(entry.cloudMapId, localId);
+  }
+  return linked;
 }
 
 export function unlinkMap(state: SyncState, localMapId: string): SyncState {
