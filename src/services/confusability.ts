@@ -14,8 +14,12 @@ export interface ConfusabilityReport {
   total: number;
   /** Share of them recognised as their own node, 0–1; 0 when `total` is 0. */
   accuracy: number;
+  /** Average lead in percent points of the winner over the runner-up; small means near-ties. */
+  meanMargin: number;
   /** Wrong recognitions, most frequent first. */
   confused: ConfusedPair[];
+  /** Nodes with a single view, which cannot be tested (untrained nodes are not counted). */
+  skippedNodes: number;
 }
 
 export interface ConfusabilityOptions {
@@ -37,16 +41,22 @@ export function analyzeConfusability(
   const pairs = new Map<string, ConfusedPair>();
   let total = 0;
   let correct = 0;
+  let marginSum = 0;
+  let skippedNodes = 0;
 
   for (const node of Object.values(nodes)) {
-    if (node.embeddings.length < 2) continue;
+    if (node.embeddings.length < 2) {
+      if (node.embeddings.length === 1) skippedNodes++;
+      continue;
+    }
     for (const sample of node.embeddings) {
       const rest: Record<string, MapNode> = {
         ...nodes,
         [node.id]: { ...node, embeddings: node.embeddings.filter((s) => s !== sample) },
       };
-      const [top] = rankMatches(sample.vector, rest, { limit: 1, center });
+      const [top, second] = rankMatches(sample.vector, rest, { limit: 2, center });
       total++;
+      marginSum += top ? top.score - (second?.score ?? 0) : 0;
       if (!top || top.node.id === node.id) {
         if (top) correct++;
         continue;
@@ -61,6 +71,8 @@ export function analyzeConfusability(
   return {
     total,
     accuracy: total === 0 ? 0 : correct / total,
+    meanMargin: total === 0 ? 0 : marginSum / total,
     confused: [...pairs.values()].sort((a, b) => b.count - a.count),
+    skippedNodes,
   };
 }

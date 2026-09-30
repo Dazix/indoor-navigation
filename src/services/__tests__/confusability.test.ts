@@ -48,6 +48,20 @@ describe('analyzeConfusability', () => {
 
   it('returns an empty report when no node has two views', () => {
     const report = analyzeConfusability({ a: trained('a', [[1, 0]]) });
-    expect(report).toEqual({ total: 0, accuracy: 0, confused: [] });
+    expect(report).toEqual({ total: 0, accuracy: 0, meanMargin: 0, confused: [], skippedNodes: 1 });
+  });
+
+  it('reports the lead over the runner-up', () => {
+    const nodes = {
+      a: trained('a', [
+        [1, 0, 0],
+        [1, 0, 0],
+      ]),
+      b: trained('b', [[0, 1, 0]]),
+    };
+    const report = analyzeConfusability(nodes, { centered: false });
+    // Each held-out view matches its twin at 100 % and the other place at 0 %.
+    expect(report.meanMargin).toBe(100);
+    expect(report.skippedNodes).toBe(1);
   });
 });

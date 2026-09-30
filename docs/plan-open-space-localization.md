@@ -24,7 +24,7 @@ Proč to v open space selhává:
 - [x] `src/services/confusability.ts`: leave-one-out nad uloženými vzorky mapy, top-1 přesnost a
       matice/seznam nejvíc zaměnitelných dvojic uzlů
 - [x] Testy v `src/services/__tests__/confusability.test.ts`
-- [ ] Zobrazit v editoru jako "tyto uzly se pletou, přidej QR marker" (navazuje na plan-walkthrough-coverage)
+- [x] Zobrazit v editoru jako "tyto uzly se pletou, přidej QR marker" (navazuje na plan-walkthrough-coverage)
 
 ### 2. Odečtení společné složky (mean-centering) + kontrast skóre
 
