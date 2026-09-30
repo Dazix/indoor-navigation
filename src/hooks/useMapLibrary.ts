@@ -54,7 +54,7 @@ function errorMessage(err: unknown): string {
  * including thumbnails and floor plan images, lives in IndexedDB, which has far more room.
  * Edits to the active map are saved automatically with a short debounce.
  */
-export function useMapLibrary() {
+export function useMapLibrary({ onEdited }: { onEdited?: (mapId: string) => void } = {}) {
   const [library, setLibrary, indexError] = useLocalStorage<MapLibrary>(
     LIBRARY_STORAGE_KEY,
     EMPTY_LIBRARY,
@@ -69,6 +69,11 @@ export function useMapLibrary() {
   const pendingRef = useRef<PendingSave | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const bootstrapping = useRef(false);
+  // Reported as soon as an edit lands, before the debounced save, so sync status reacts instantly.
+  const onEditedRef = useRef(onEdited);
+  useEffect(() => {
+    onEditedRef.current = onEdited;
+  }, [onEdited]);
 
   const flush = useCallback(async () => {
     clearTimeout(timerRef.current);
@@ -138,6 +143,7 @@ export function useMapLibrary() {
   useEffect(() => {
     if (!active || active.history.present === savedRef.current) return;
     savedRef.current = active.history.present;
+    onEditedRef.current?.(active.id);
     pendingRef.current = { id: active.id, map: active.history.present };
     clearTimeout(timerRef.current);
     timerRef.current = setTimeout(() => void flush(), SAVE_DEBOUNCE_MS);
@@ -216,6 +222,7 @@ export function useMapLibrary() {
         savedRef.current = named;
         setActive({ id: existing.id, history: createHistory(named) });
       }
+      onEditedRef.current?.(existing.id);
       setLibrary((lib) => ({
         ...updateSummary(lib, existing.id, { name: named.metadata.name, updatedAt: Date.now() }),
         activeMapId: existing.id,
@@ -223,6 +230,26 @@ export function useMapLibrary() {
       return existing.id;
     },
     [active?.id, addMap, flush, library, setLibrary],
+  );
+
+  /**
+   * Replaces a map with a version received from the cloud. Unlike an edit this is not reported through
+   * `onEdited`: local and cloud are equal afterwards, and undo history starts fresh.
+   */
+  const replaceMap = useCallback(
+    async (id: string, map: MapData) => {
+      if (pendingRef.current?.id === id) {
+        clearTimeout(timerRef.current);
+        pendingRef.current = null;
+      }
+      await writeMap(id, map);
+      if (active?.id === id) {
+        savedRef.current = map;
+        setActive({ id, history: createHistory(map) });
+      }
+      setLibrary((lib) => updateSummary(lib, id, { name: map.metadata.name, updatedAt: Date.now() }));
+    },
+    [active?.id, setLibrary],
   );
 
   const switchMap = useCallback(
@@ -256,6 +283,7 @@ export function useMapLibrary() {
       } else {
         const map = await readMap(id);
         if (map) await writeMap(id, withName(map, trimmed));
+        onEditedRef.current?.(id);
       }
       setLibrary((lib) => updateSummary(lib, id, { name: trimmed, updatedAt: Date.now() }));
     },
@@ -297,6 +325,7 @@ export function useMapLibrary() {
     createMap,
     importMap: addMap,
     importFromUrl,
+    replaceMap,
     findBySource: findSource,
     duplicateActive,
     renameMap,

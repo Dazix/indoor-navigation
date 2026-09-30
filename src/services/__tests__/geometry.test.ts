@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { bearingBetween, normalizeDeg, pathLength, pointAlongPath } from './geometry';
+import { bearingBetween, normalizeDeg, pathLength, pointAlongPath } from '../geometry';
 
 describe('bearingBetween', () => {
   const origin = { x: 50, y: 50 };

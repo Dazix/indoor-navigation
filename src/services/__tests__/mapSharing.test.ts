@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createBlankMap } from './mapLibrary';
+import { createBlankMap } from '../mapLibrary';
 import {
   buildNodeLink,
   buildShareLink,
@@ -8,7 +8,7 @@ import {
   mapFileName,
   resolveMapUrl,
   shareCandidates,
-} from './mapSharing';
+} from '../mapSharing';
 
 const BASE = 'https://vibecoding.sanda.dev/indoor-navigation/';
 

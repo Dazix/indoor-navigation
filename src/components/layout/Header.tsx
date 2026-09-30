@@ -1,4 +1,5 @@
 import { ChevronDown, Layers, MapPinned, PencilRuler } from 'lucide-react';
+import type { ReactNode } from 'react';
 import type { MapSummary } from '../../types/map';
 import type { AppMode } from '../../types/navigation';
 import type { EmbeddingEngine, ModelStatus } from '../../types/vision';
@@ -12,6 +13,8 @@ interface HeaderProps {
   onManageMaps: () => void;
   engine: EmbeddingEngine;
   modelStatus: ModelStatus;
+  /** Cloud sync status and actions, shown next to the title. */
+  cloudSlot?: ReactNode;
 }
 
 export function Header({
@@ -23,6 +26,7 @@ export function Header({
   onManageMaps,
   engine,
   modelStatus,
+  cloudSlot,
 }: HeaderProps) {
   const sorted = [...maps].sort((a, b) => a.name.localeCompare(b.name));
   const badge =
@@ -41,6 +45,7 @@ export function Header({
               <span className="hidden rounded border border-brand-700/50 bg-brand-900/80 px-1.5 font-mono text-[9px] text-brand-300 md:inline">
                 {badge}
               </span>
+              {cloudSlot}
             </div>
             <div className="flex items-center">
               <label className="relative flex min-w-0 items-center">

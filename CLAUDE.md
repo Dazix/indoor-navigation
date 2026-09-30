@@ -14,19 +14,19 @@ npm run typecheck      # tsc -b --noEmit
 npm run lint           # ESLint (typed rules + react-hooks)
 npm run format:check   # Prettier (npm run format to write)
 npm test               # vitest run (all tests)
-npx vitest run src/services/pathfinding.test.ts   # single test file
+npx vitest run src/services/__tests__/pathfinding.test.ts   # single test file
 npx vitest run -t "name substring"                # single test by name
 ```
 
 CI (`.github/workflows/deploy.yml`, on push to `main`) runs `npm ci` → lint → test → build (with `GITHUB_PAGES=true`) → deploy to GitHub Pages. Keep lint, tests and build green.
 
-Vitest runs in the `node` environment and only picks up `src/**/*.test.ts`, so there are no component tests. Logic that needs tests belongs in `src/services/`.
+Vitest runs in the `node` environment and only picks up `src/**/*.test.ts`, so there are no component tests. Logic that needs tests belongs in `src/services/`. Tests live in a `__tests__/` folder next to the module they test (e.g. `src/services/cloud/__tests__/`), not beside the source file.
 
 ## Architecture
 
 Zero-backend PWA (Vite + React 19 + TypeScript + Tailwind 4). Everything runs in the browser. There is no server API.
 
-- **`src/services/`**: pure, framework-free logic with colocated `*.test.ts`. This is where behavior lives.
+- **`src/services/`**: pure, framework-free logic with tests in `__tests__/` folders. This is where behavior lives.
   - Map model: `mapEditing.ts` holds pure immutable edit functions (`addNode`, `toggleEdge`, `setFloorPlan`, …) that take a `MapData` and return a new one. `corridors.ts` handles bend points on edges.
   - Routing: `pathfinding.ts` (A\* over the node/edge graph), `navigation.ts`, `modeRoute.ts`, `routeAnimation.ts`, `placeSearch.ts`.
   - Localization: `visionMatcher.ts` (cosine k-NN over MobileNet embeddings), `pdr.ts` (step detection), `geometry.ts`.

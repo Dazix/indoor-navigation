@@ -10,9 +10,9 @@ import {
   mapBends,
   moveBend,
   nearestOnPolyline,
-} from './corridors';
-import { createBlankMap } from './mapLibrary';
-import { addNode, toggleEdge } from './mapEditing';
+} from '../corridors';
+import { createBlankMap } from '../mapLibrary';
+import { addNode, toggleEdge } from '../mapEditing';
 
 function sampleMap() {
   let map = createBlankMap('Test');

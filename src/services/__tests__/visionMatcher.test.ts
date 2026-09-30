@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { MapNode } from '../types/map';
+import type { MapNode } from '../../types/map';
 import {
   centerCropRect,
   compactEmbedding,
@@ -8,7 +8,7 @@ import {
   findNodeByCode,
   pickAutoMatch,
   rankMatches,
-} from './visionMatcher';
+} from '../visionMatcher';
 
 function trained(id: string, vectors: number[][]): MapNode {
   return {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { canRedo, canUndo, COALESCE_MS, commit, createHistory, HISTORY_LIMIT, redo, undo } from './history';
+import { canRedo, canUndo, COALESCE_MS, commit, createHistory, HISTORY_LIMIT, redo, undo } from '../history';
 
 describe('history', () => {
   it('undoes and redoes in order', () => {

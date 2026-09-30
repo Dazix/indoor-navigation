@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { addNode } from './mapEditing';
-import { createBlankMap } from './mapLibrary';
-import { normalizeText, searchPlaces } from './placeSearch';
+import { addNode } from '../mapEditing';
+import { createBlankMap } from '../mapLibrary';
+import { normalizeText, searchPlaces } from '../placeSearch';
 
 let map = createBlankMap('Search');
 map = addNode(map, { id: 'k', x: 10, y: 10, label: 'Kuchyňka', markerCode: 'LOC-1' });

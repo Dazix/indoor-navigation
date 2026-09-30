@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { edgeBends, insertBend } from './corridors';
-import { createBlankMap } from './mapLibrary';
+import { edgeBends, insertBend } from '../corridors';
+import { createBlankMap } from '../mapLibrary';
 import {
   addNode,
   canvasRatioForImage,
@@ -18,7 +18,7 @@ import {
   snapToMap,
   toggleEdge,
   updateNode,
-} from './mapEditing';
+} from '../mapEditing';
 
 function sampleMap() {
   let map = createBlankMap('Test');

@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { insertBend } from './corridors';
-import { addNode, toggleEdge } from './mapEditing';
-import { createBlankMap } from './mapLibrary';
-import { computeRoute, formatDistance } from './navigation';
+import { insertBend } from '../corridors';
+import { addNode, toggleEdge } from '../mapEditing';
+import { createBlankMap } from '../mapLibrary';
+import { computeRoute, formatDistance } from '../navigation';
 
 // L-shaped corridor: a (10,90) → b (10,50) → c (50,50); 1 unit = 0.5 m, so 20 m + 20 m.
 let map = createBlankMap('Route test');

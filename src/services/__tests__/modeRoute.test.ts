@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { hrefForMode, modeFromHash } from './modeRoute';
+import { hrefForMode, modeFromHash } from '../modeRoute';
 
 const base = 'https://example.com/indoor-navigation/';
 

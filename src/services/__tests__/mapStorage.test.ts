@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import defaultMap from '../../public/default-map.json';
-import { parseMapData } from './mapStorage';
+import defaultMap from '../../../public/default-map.json';
+import { parseMapData } from '../mapStorage';
 
 function clone(): Record<string, unknown> {
   const copy: Record<string, unknown> = structuredClone(defaultMap);

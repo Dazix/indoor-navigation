@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatBytes, formatDuration, formatRate, RateMeter, remainingSeconds } from './transferStats';
+import { formatBytes, formatDuration, formatRate, RateMeter, remainingSeconds } from '../transferStats';
 
 describe('transfer stats', () => {
   it('measures speed over a sliding window', () => {

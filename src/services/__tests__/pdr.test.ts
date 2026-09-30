@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createStepDetector, type MotionSample } from './pdr';
+import { createStepDetector, type MotionSample } from '../pdr';
 
 const G = 9.81;
 const RATE_HZ = 50;

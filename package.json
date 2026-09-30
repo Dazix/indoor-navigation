@@ -25,6 +25,7 @@
   "dependencies": {
     "@tensorflow-models/mobilenet": "2.1.1",
     "@tensorflow/tfjs": "4.22.0",
+    "firebase": "12.19.0",
     "idb-keyval": "6.3.0",
     "jsqr": "1.4.0",
     "lucide-react": "1.48.0",

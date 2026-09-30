@@ -7,7 +7,14 @@ import { LocationSearch } from './components/map/LocationSearch';
 import { MapManagerModal, ShareLinkSection } from './components/maps/MapManagerModal';
 import { Modal } from './components/ui/Modal';
 import { NavigationBar } from './components/ui/NavigationBar';
+import { CloudBanner } from './components/cloud/CloudBanner';
+import { CloudSettingsModal } from './components/cloud/CloudSettingsModal';
+import { ConflictModal } from './components/cloud/ConflictModal';
+import { SyncStatus } from './components/cloud/SyncStatus';
+import { useCloudSync } from './hooks/useCloudSync';
 import { useMapLibrary } from './hooks/useMapLibrary';
+import { useSyncState } from './hooks/useSyncState';
+import { hasUrlConfig, parseUrlConfig, stripConfigParams } from './services/cloudConfig';
 import { readMap } from './services/mapLibrary';
 import { useOrientation } from './hooks/useOrientation';
 import { usePDR } from './hooks/usePDR';
@@ -73,6 +80,12 @@ function takeUrlParam(name: string): string | null {
 const INITIAL_MAP_LINK = takeUrlParam(MAP_URL_PARAM);
 /** `?to=` location link: node to navigate to once the map is loaded. */
 const INITIAL_TARGET = takeUrlParam(TO_URL_PARAM);
+/**
+ * `?cfg=` / `?cloudMap=` cloud setup link. Unlike the params above it stays in the address bar until the
+ * user chooses to clean it (see CloudBanner), so they can see what the link carried.
+ */
+const INITIAL_CLOUD_CONFIG = parseUrlConfig(window.location.search);
+const INITIAL_CLOUD_LINK_INVALID = INITIAL_CLOUD_CONFIG === null && hasUrlConfig(window.location.search);
 
 function FullScreenMessage({ children }: { children: ReactNode }) {
   return (
@@ -83,7 +96,8 @@ function FullScreenMessage({ children }: { children: ReactNode }) {
 }
 
 export default function App() {
-  const library = useMapLibrary();
+  const syncState = useSyncState();
+  const library = useMapLibrary({ onEdited: syncState.markEdited });
   const { map, activeMapId, updateMap } = library;
   const tf = useTensorFlow();
 
@@ -97,7 +111,12 @@ export default function App() {
   const [walkthroughOpen, setWalkthroughOpen] = useState(false);
   const [managerOpen, setManagerOpen] = useState(false);
   const [shareLinkOpen, setShareLinkOpen] = useState(false);
-  const [notice, setNotice] = useState<Notice | null>(null);
+  const [notice, setNotice] = useState<Notice | null>(() =>
+    INITIAL_CLOUD_LINK_INVALID
+      ? { tone: 'error', text: 'The cloud settings in this link are not valid.' }
+      : null,
+  );
+  const [cloudOpen, setCloudOpen] = useState(false);
   const [p2pRole, setP2PRole] = useState<P2PRole | null>(null);
   /** Map spot to zoom to (editor search); `seq` makes a repeated pick of the same spot count. */
   const [mapFocus, setMapFocus] = useState<{ point: Point; seq: number } | null>(null);
@@ -128,6 +147,25 @@ export default function App() {
   if (map && linkFromId && !map.nodes[linkFromId]) setLinkFromId(null);
   const currentLocation = nav.from && map?.nodes[nav.from] ? nav.from : null;
   const destination = nav.to && map?.nodes[nav.to] ? nav.to : null;
+
+  const cloud = useCloudSync({
+    sync: syncState.sync,
+    setSync: syncState.setSync,
+    map,
+    activeMapId,
+    maps: library.maps,
+    libraryReady: library.status === 'ready',
+    importMap: library.importMap,
+    replaceMap: library.replaceMap,
+    switchMap: library.switchMap,
+    navigating: destination !== null,
+    notify: setNotice,
+    urlConfig: INITIAL_CLOUD_CONFIG,
+  });
+  const cleanCloudUrl = () => {
+    window.history.replaceState(window.history.state, '', stripConfigParams(window.location.href));
+    cloud.acknowledgeUrlConfig();
+  };
 
   // Only the editor is in the URL: entering or leaving it adds a history entry, so Back works.
   const changeMode = (next: AppMode) => {
@@ -465,6 +503,27 @@ export default function App() {
           }}
           engine={tf.engine}
           modelStatus={tf.status}
+          cloudSlot={
+            <SyncStatus
+              configured={cloud.configured}
+              status={cloud.status}
+              dirty={!cloud.entry || cloud.entry.dirty}
+              busy={cloud.busy}
+              onPublish={() => void cloud.publish()}
+              onOpenSettings={() => {
+                setCloudOpen(true);
+              }}
+            />
+          }
+        />
+      )}
+      {mode !== 'ar' && (
+        <CloudBanner
+          urlConfigInAddressBar={cloud.configFromUrl}
+          onCleanUrl={cleanCloudUrl}
+          onDismissUrl={cloud.acknowledgeUrlConfig}
+          updateAvailable={cloud.pendingUpdate}
+          onApplyUpdate={() => void cloud.applyPendingUpdate()}
         />
       )}
 
@@ -762,6 +821,19 @@ export default function App() {
         onReceiveNearby={() => {
           setP2PRole('receive');
         }}
+      />
+
+      <CloudSettingsModal
+        open={cloudOpen}
+        onClose={() => {
+          setCloudOpen(false);
+        }}
+        cloud={cloud}
+      />
+      <ConflictModal
+        conflict={cloud.conflict}
+        onResolve={(choice) => void cloud.resolveConflict(choice)}
+        onClose={cloud.dismissConflict}
       />
     </div>
   );
