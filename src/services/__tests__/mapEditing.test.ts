@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { edgeBends, insertBend } from '../corridors';
 import { createBlankMap } from '../mapLibrary';
 import {
+  addEdge,
   addNode,
   canvasRatioForImage,
   deleteNode,
@@ -16,7 +17,6 @@ import {
   setFloorPlanFineRotation,
   setMapAspect,
   snapToMap,
-  toggleEdge,
   updateNode,
 } from '../mapEditing';
 
@@ -25,23 +25,25 @@ function sampleMap() {
   map = addNode(map, { id: 'a', x: 10, y: 10, label: 'A', markerCode: 'LOC-A' });
   map = addNode(map, { id: 'b', x: 20, y: 10, label: 'B', markerCode: 'LOC-B' });
   map = addNode(map, { id: 'c', x: 30, y: 10, label: 'C', markerCode: 'LOC-C' });
-  return toggleEdge(toggleEdge(map, 'a', 'b'), 'b', 'c');
+  return addEdge(addEdge(map, 'a', 'b'), 'b', 'c');
 }
 
 describe('map editing', () => {
-  it('toggles corridors regardless of direction', () => {
+  it('adds a corridor once, regardless of direction, and keeps its bends', () => {
     const map = sampleMap();
     expect(map.edges).toEqual([
       ['a', 'b'],
       ['b', 'c'],
     ]);
-    expect(toggleEdge(map, 'b', 'a').edges).toEqual([['b', 'c']]);
+    expect(addEdge(map, 'b', 'a')).toBe(map);
+    const bent = insertBend(map, 0, 0, { x: 15, y: 20 });
+    expect(addEdge(bent, 'b', 'a')).toBe(bent);
   });
 
   it('ignores self-loops and unknown nodes', () => {
     const map = sampleMap();
-    expect(toggleEdge(map, 'a', 'a')).toBe(map);
-    expect(toggleEdge(map, 'a', 'ghost')).toBe(map);
+    expect(addEdge(map, 'a', 'a')).toBe(map);
+    expect(addEdge(map, 'a', 'ghost')).toBe(map);
   });
 
   it('deletes a node with its corridors', () => {

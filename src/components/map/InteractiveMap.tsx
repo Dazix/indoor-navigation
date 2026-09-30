@@ -190,8 +190,10 @@ export function InteractiveMap({
   const { width, height, floorPlanRotationDeg } = metadata;
   const size = { width, height };
   const canDrag = isEditor && tool === 'select';
+  /** A click on a corridor adds a bend (select, add and link tools) and shows a hover preview for it. */
+  const bendTool = isEditor && (tool === 'select' || tool === 'add_node' || tool === 'link_nodes');
   /** Corridors and bends react to the pointer only with the tools that edit them. */
-  const corridorsInteractive = isEditor && (tool === 'select' || tool === 'delete');
+  const corridorsInteractive = bendTool || (isEditor && tool === 'delete');
 
   const [view, setView] = useState<MapView>(() => fitView(size));
   // A new canvas size (aspect change, rotation) starts from the whole map again.
@@ -273,7 +275,7 @@ export function InteractiveMap({
     return { dist: Math.hypot(a.x - b.x, a.y - b.y), mid: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 } };
   };
 
-  /** Corridor under the pointer and the snapped spot on it where a bend would go. */
+  /** Corridor under the pointer and the spot on it (not grid-snapped, so it stays on the line) where a bend would go. */
   const corridorAt = (target: EventTarget, svg: SVGSVGElement, clientX: number, clientY: number) => {
     const attr = (target as Element)
       .closest('[data-edge-index]:not([data-bend-index])')
@@ -282,7 +284,7 @@ export function InteractiveMap({
     const edge = edges[edgeIndex];
     if (!edge) return null;
     const hit = nearestOnPolyline(corridorPoints(nodes, edge), toMapPoint(svg, clientX, clientY));
-    return hit ? { edgeIndex, segmentIndex: hit.segmentIndex, point: snap(hit.point) } : null;
+    return hit ? { edgeIndex, segmentIndex: hit.segmentIndex, point: hit.point } : null;
   };
 
   const onPointerDown = (e: ReactPointerEvent<SVGSVGElement>) => {
@@ -352,7 +354,7 @@ export function InteractiveMap({
     const g = gesture.current;
     if (svg && !g && e.pointerType === 'mouse') {
       // Hovering a corridor previews where a click adds a bend.
-      const preview = canDrag ? corridorAt(e.target, svg, e.clientX, e.clientY) : null;
+      const preview = bendTool ? corridorAt(e.target, svg, e.clientX, e.clientY) : null;
       setBendPreview((prev) =>
         prev?.edgeIndex === preview?.edgeIndex &&
         prev?.point.x === preview?.point.x &&
@@ -576,6 +578,8 @@ export function InteractiveMap({
                     data-edge-index={edgeIndex}
                     className={tool === 'delete' ? 'cursor-pointer' : 'cursor-copy'}
                     onClick={(e) => {
+                      // In the add and link tools the click bubbles up to the canvas tap, which adds the bend.
+                      if (tool === 'add_node' || tool === 'link_nodes') return;
                       e.stopPropagation();
                       if (tool === 'delete') onEdgeTap?.(edgeIndex);
                     }}
@@ -625,7 +629,7 @@ export function InteractiveMap({
               )),
             )}
 
-          {canDrag && bendPreview && (
+          {bendTool && bendPreview && (
             <circle
               cx={bendPreview.point.x}
               cy={bendPreview.point.y}

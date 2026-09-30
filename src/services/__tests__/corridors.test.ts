@@ -12,13 +12,13 @@ import {
   nearestOnPolyline,
 } from '../corridors';
 import { createBlankMap } from '../mapLibrary';
-import { addNode, toggleEdge } from '../mapEditing';
+import { addEdge, addNode } from '../mapEditing';
 
 function sampleMap() {
   let map = createBlankMap('Test');
   map = addNode(map, { id: 'a', x: 10, y: 10, label: 'A', markerCode: 'LOC-A' });
   map = addNode(map, { id: 'b', x: 30, y: 30, label: 'B', markerCode: 'LOC-B' });
-  return toggleEdge(map, 'a', 'b');
+  return addEdge(map, 'a', 'b');
 }
 
 describe('corridors', () => {
@@ -119,7 +119,7 @@ describe('corridors', () => {
 
     it('picks the closest of two corridors', () => {
       let map = addNode(sampleMap(), { id: 'c', x: 10, y: 40, label: 'C', markerCode: 'LOC-C' });
-      map = toggleEdge(map, 'a', 'c');
+      map = addEdge(map, 'a', 'c');
       expect(corridorNear(map.nodes, map.edges, { x: 11, y: 25 }, 5)?.edgeIndex).toBe(1);
     });
   });

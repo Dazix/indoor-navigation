@@ -33,14 +33,11 @@ export function deleteNode(map: MapData, id: string): MapData {
   return { ...map, nodes, edges: map.edges.filter(([a, b]) => a !== id && b !== id) };
 }
 
-/** Adds a corridor between two nodes, or removes it when it already exists. */
-export function toggleEdge(map: MapData, a: string, b: string): MapData {
+/** Adds a corridor between two nodes. An existing corridor (with its bends) is left untouched. */
+export function addEdge(map: MapData, a: string, b: string): MapData {
   if (a === b || !(a in map.nodes) || !(b in map.nodes)) return map;
-  const exists = map.edges.some((e) => sameEdge(a, b, e));
-  return {
-    ...map,
-    edges: exists ? map.edges.filter((e) => !sameEdge(a, b, e)) : [...map.edges, [a, b]],
-  };
+  if (map.edges.some((e) => sameEdge(a, b, e))) return map;
+  return { ...map, edges: [...map.edges, [a, b]] };
 }
 
 export function setEmbeddings(map: MapData, id: string, embeddings: EmbeddingSample[]): MapData {
