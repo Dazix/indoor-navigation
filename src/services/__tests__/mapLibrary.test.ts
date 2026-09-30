@@ -7,6 +7,7 @@ import {
   findBySource,
   parseLibrary,
   removeFromLibrary,
+  summaryFields,
   uniqueName,
   updateSummary,
 } from '../mapLibrary';
@@ -72,5 +73,21 @@ describe('map library', () => {
     expect(parseLibrary(withSource)).toEqual(withSource);
     expect(findBySource(withSource, url)?.id).toBe('d');
     expect(findBySource(library, url)).toBeUndefined();
+  });
+
+  it('mirrors the map position into the index and validates it', () => {
+    const map = {
+      ...createBlankMap('Geo'),
+      metadata: { ...createBlankMap('Geo').metadata, geo: { lat: 50, lng: 14 } },
+    };
+    expect(summaryFields(map)).toEqual({ name: 'Geo', geo: { lat: 50, lng: 14 } });
+    const withGeo = addToLibrary(library, { id: 'g', updatedAt: 5, ...summaryFields(map) });
+    expect(parseLibrary(withGeo)).toEqual(withGeo);
+    expect(
+      parseLibrary({
+        activeMapId: null,
+        maps: [{ id: 'x', name: 'x', updatedAt: 0, geo: { lat: 200, lng: 0 } }],
+      }),
+    ).toBeNull();
   });
 });

@@ -85,4 +85,20 @@ describe('parseMapData', () => {
     broken.floorPlanImage = 'javascript:alert(1)';
     expect(parseMapData(broken).ok).toBe(false);
   });
+
+  it('keeps a valid map position and rejects an out-of-range one', () => {
+    const withGeo = clone();
+    (withGeo.metadata as Record<string, unknown>).geo = { lat: 50.0755, lng: 14.4378 };
+    const ok = parseMapData(withGeo);
+    expect(ok.ok).toBe(true);
+    if (ok.ok) expect(ok.data.metadata.geo).toEqual({ lat: 50.0755, lng: 14.4378 });
+
+    (withGeo.metadata as Record<string, unknown>).geo = { lat: 91, lng: 0 };
+    expect(parseMapData(withGeo).ok).toBe(false);
+  });
+
+  it('leaves geo unset on maps that have none', () => {
+    const result = parseMapData(defaultMap);
+    expect(result.ok && result.data.metadata.geo).toBeFalsy();
+  });
 });
