@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { clampView, fitView, markerBaseScale, snapStep, viewBoxOf, zoomAround } from '../viewport';
+import {
+  clampView,
+  fitView,
+  markerBaseScale,
+  nodeDotScale,
+  snapStep,
+  viewBoxOf,
+  zoomAround,
+} from '../viewport';
 
 const size = { width: 100, height: 50 };
 
@@ -25,6 +33,12 @@ describe('map viewport', () => {
     expect(markerBaseScale(360, 100)).toBe(1);
     expect(markerBaseScale(1000, 100)).toBe(0.5);
     expect(markerBaseScale(0, 100)).toBe(1);
+  });
+
+  it('draws node dots smaller on a phone-width map only', () => {
+    expect(nodeDotScale(360)).toBe(0.8);
+    expect(nodeDotScale(800)).toBe(1);
+    expect(nodeDotScale(0)).toBe(1);
   });
 
   it('uses a finer snap when zoomed in', () => {

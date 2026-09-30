@@ -2,10 +2,14 @@ import { describe, expect, it } from 'vitest';
 import type { MapNode } from '../../types/map';
 import {
   centerCropRect,
+  centeredCosineSimilarity,
   compactEmbedding,
   cosineSimilarity,
   EMBEDDING_SIZE,
   findNodeByCode,
+  HEADING_MIN_FACTOR,
+  headingFactor,
+  meanEmbedding,
   pickAutoMatch,
   rankMatches,
 } from '../visionMatcher';
@@ -173,5 +177,58 @@ describe('pickAutoMatch', () => {
   it('counts the location boost in the lead', () => {
     expect(pickAutoMatch([result('a', 90), result('b', 80)], options)?.node.id).toBe('a');
     expect(pickAutoMatch([result('a', 90), result('b', 80, 5)], options)).toBeNull();
+  });
+});
+
+describe('headingFactor', () => {
+  it('counts views facing roughly the same way in full and unknown headings too', () => {
+    expect(headingFactor(100, 100)).toBe(1);
+    expect(headingFactor(350, 30)).toBe(1);
+    expect(headingFactor(undefined, 30)).toBe(1);
+    expect(headingFactor(30, null)).toBe(1);
+  });
+
+  it('weights views facing away down to the minimum', () => {
+    expect(headingFactor(0, 180)).toBeCloseTo(HEADING_MIN_FACTOR);
+    const side = headingFactor(0, 90);
+    expect(side).toBeLessThan(1);
+    expect(side).toBeGreaterThan(HEADING_MIN_FACTOR);
+  });
+
+  it('prefers the view recorded facing the same way when vectors tie', () => {
+    const facing = (id: string, headingDeg: number): MapNode => {
+      const node = trained(id, [[1, 0]]);
+      return { ...node, embeddings: node.embeddings.map((s) => ({ ...s, headingDeg })) };
+    };
+    const tied = { a: facing('a', 180), b: facing('b', 0) };
+    const ranked = rankMatches([1, 0], tied, { heading: 10 });
+    expect(ranked.map((r) => r.node.id)).toEqual(['b', 'a']);
+    expect(ranked.map((r) => r.score)).toEqual([100, Math.round(headingFactor(180, 10) * 100)]);
+  });
+});
+
+describe('meanEmbedding and centred ranking', () => {
+  const nodes = {
+    a: trained('a', [[1, 0.2, 0]]),
+    b: trained('b', [[1, 0, 0.2]]),
+  };
+  const live = [1, 0.15, 0.05];
+
+  it('averages all vectors of the expected size', () => {
+    expect(meanEmbedding(nodes, 3)).toEqual([1, 0.1, 0.1]);
+    expect(meanEmbedding(nodes, 5)).toBeNull();
+  });
+
+  it('separates places that share a dominant common component', () => {
+    const plain = rankMatches(live, nodes).map((r) => r.score);
+    expect(Math.abs((plain[0] ?? 0) - (plain[1] ?? 0))).toBeLessThan(5);
+
+    const centred = rankMatches(live, nodes, { center: meanEmbedding(nodes, 3) });
+    expect(centred.map((r) => r.node.id)[0]).toBe('a');
+    expect((centred[0]?.score ?? 0) - (centred[1]?.score ?? 100)).toBeGreaterThan(50);
+  });
+
+  it('falls back to plain cosine when the centre has another length', () => {
+    expect(centeredCosineSimilarity([1, 0], [1, 0], [0, 0, 0])).toBe(1);
   });
 });

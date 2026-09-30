@@ -21,7 +21,8 @@ import { useOrientation } from './hooks/useOrientation';
 import { usePDR } from './hooks/usePDR';
 import { useTensorFlow } from './hooks/useTensorFlow';
 import { normalizeDeg } from './services/geometry';
-import type { LocationFix } from './services/locationPrior';
+import type { LocationFix, WalkEstimate } from './services/locationPrior';
+import { planDisplacement } from './services/walkTrack';
 import { corridorNear, deleteBend, deleteEdge, insertBend, moveBend } from './services/corridors';
 import { imageRatio, pickImageFile, readClipboardImage, readFloorPlanFile } from './services/imageFiles';
 import {
@@ -58,6 +59,7 @@ import type { P2PRole } from './components/maps/P2PTransferModal';
 const ARCanvas = lazy(() => import('./components/ar/ARCanvas'));
 const VisionScannerModal = lazy(() => import('./components/scanner/VisionScannerModal'));
 const WalkthroughModal = lazy(() => import('./components/editor/WalkthroughModal'));
+const RecognitionQualityModal = lazy(() => import('./components/editor/RecognitionQualityModal'));
 const P2PTransferModal = lazy(() => import('./components/maps/P2PTransferModal'));
 
 type Notice = { tone: 'error' | 'info'; text: string };
@@ -110,6 +112,7 @@ export default function App() {
   const [measure, setMeasure] = useState<Point[]>([]);
   const [scannerOpen, setScannerOpen] = useState(false);
   const [walkthroughOpen, setWalkthroughOpen] = useState(false);
+  const [qualityOpen, setQualityOpen] = useState(false);
   const [managerOpen, setManagerOpen] = useState(false);
   const [shareLinkOpen, setShareLinkOpen] = useState(false);
   const [notice, setNotice] = useState<Notice | null>(() =>
@@ -192,7 +195,7 @@ export default function App() {
 
   const sensorsEnabled = mode !== 'editor';
   const orientation = useOrientation(sensorsEnabled);
-  const pdr = usePDR(sensorsEnabled);
+  const pdr = usePDR(sensorsEnabled, orientation.absolute ? orientation.heading : null);
 
   const route = useMemo(
     () => (map ? computeRoute(map, currentLocation, destination, pdr.distanceM) : null),
@@ -294,7 +297,22 @@ export default function App() {
     switchMap: library.switchMap,
   });
 
-  const { reset: resetSteps } = pdr;
+  const { reset: resetSteps, markFix } = pdr;
+
+  // How far and which way the user walked since the last confirmed location; null without a step
+  // counter, when the scanner falls back to a plain disc around the fix.
+  const { permission: motionPermission, sinceFix, stepLengthM } = pdr;
+  const northOffsetDeg = map?.metadata.northOffsetDeg ?? 0;
+  const walkEstimate = useMemo<WalkEstimate | null>(
+    () =>
+      motionPermission === 'granted'
+        ? {
+            distanceM: sinceFix.steps * stepLengthM,
+            displacementM: planDisplacement(sinceFix, northOffsetDeg),
+          }
+        : null,
+    [motionPermission, sinceFix, stepLengthM, northOffsetDeg],
+  );
 
   /** Starts a new leg from the last waypoint the user walked past. */
   const navigateTo = useCallback(
@@ -311,8 +329,9 @@ export default function App() {
       setNav((n) => ({ ...n, from }));
       setLastFix({ nodeId: from, at: Date.now() });
       resetSteps();
+      markFix();
     },
-    [resetSteps],
+    [resetSteps, markFix],
   );
 
   // Location link (?to=<node id>): navigate there on the active map, or on the library map that has it.
@@ -620,6 +639,9 @@ export default function App() {
             onRecordWalkthrough={() => {
               setWalkthroughOpen(true);
             }}
+            onOpenRecognitionQuality={() => {
+              setQualityOpen(true);
+            }}
             onClearViews={() => {
               if (selectedNodeId && window.confirm('Remove all learned views of this location?')) {
                 updateMap((m) => setEmbeddings(m, selectedNodeId, []));
@@ -784,6 +806,8 @@ export default function App() {
             map={map}
             onDetected={relocate}
             lastFix={lastFix}
+            walk={walkEstimate}
+            heading={orientation.absolute ? orientation.heading : null}
           />
         )}
         {walkthroughOpen && selectedNode && (
@@ -795,6 +819,22 @@ export default function App() {
             }}
             onSave={(id, samples) => {
               updateMap((m) => setEmbeddings(m, id, samples));
+            }}
+          />
+        )}
+        {qualityOpen && (
+          <RecognitionQualityModal
+            map={map}
+            onClose={() => {
+              setQualityOpen(false);
+            }}
+            onPickNode={(id) => {
+              const node = map.nodes[id];
+              if (!node) return;
+              setQualityOpen(false);
+              changeTool('select');
+              setSelectedNodeId(id);
+              setMapFocus((f) => ({ point: { x: node.x, y: node.y }, seq: (f?.seq ?? 0) + 1 }));
             }}
           />
         )}

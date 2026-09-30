@@ -1,4 +1,5 @@
-import type { MapData } from '../types/map';
+import type { MapData, Point } from '../types/map';
+import { distance } from './geometry';
 import { buildGraph } from './pathfinding';
 
 /** Last location the user confirmed (scan, QR code or manual pick). */
@@ -42,20 +43,74 @@ function graphDistances(map: MapData, startId: string): Map<string, number> {
   return dist;
 }
 
+/** What pedestrian dead reckoning measured since the fix. */
+export interface WalkEstimate {
+  /** Distance walked in meters (step count × step length). */
+  distanceM: number;
+  /** Displacement on the floor plan in meters (x right, y down), or null without a usable compass. */
+  displacementM: Point | null;
+}
+
+/** Position error of a dead-reckoned estimate even right after the fix, in meters. */
+export const BASE_SIGMA_M = 2;
+/** Error growth per meter walked: step length and compass heading both drift. */
+export const DRIFT_PER_M = 0.25;
+/** Weight of the walked-distance ring next to the compass-based estimate, which may be off indoors. */
+const RING_WEIGHT = 0.5;
+
+/** Bell curve: 1 at zero error, about 0.6 at one sigma. */
+function bell(error: number, sigma: number): number {
+  return Math.exp(-0.5 * (error / sigma) ** 2);
+}
+
 /**
- * Score bonus per node id for places near the last fix. Fades linearly with walking distance and
- * with the age of the fix. It is a bonus rather than a filter, because after the app was closed or
- * the phone put away the user may be anywhere; a stale or unknown fix simply gives nothing.
+ * Likelihood 0–1 of a place `graphM` walking meters from the fix after `walkedM` meters of steps.
+ * Places around that distance are likeliest; nearer ones stay possible, since the user may have
+ * looped back, and farther ones fade with the drift.
  */
-export function proximityBoosts(map: MapData, fix: LocationFix | null, now: number): Record<string, number> {
-  if (!fix || !(fix.nodeId in map.nodes)) return {};
-  const freshness = 1 - (now - fix.at) / BOOST_MAX_AGE_MS;
+function ringLikelihood(graphM: number, walkedM: number, sigma: number): number {
+  if (graphM > walkedM) return bell(graphM - walkedM, sigma);
+  return walkedM === 0 ? 1 : 0.5 + 0.5 * (graphM / walkedM);
+}
+
+/**
+ * Score bonus per node id for places where the user probably is. It is a bonus rather than a
+ * filter, because after the app was closed or the phone put away the user may be anywhere; a
+ * stale or unknown fix simply gives nothing. It fades with the age of the fix.
+ *
+ * Without a walk estimate (no motion sensor) it is a disc around the fix that fades with walking
+ * distance. With one it follows the user: the compass displacement from the fix node when available,
+ * together with a ring at the walked distance along the corridors.
+ */
+export function proximityBoosts(
+  map: MapData,
+  fix: LocationFix | null,
+  now: number,
+  walk: WalkEstimate | null = null,
+): Record<string, number> {
+  const fixNode = fix ? map.nodes[fix.nodeId] : undefined;
+  if (!fix || !fixNode) return {};
+  const freshness = Math.min(1, 1 - (now - fix.at) / BOOST_MAX_AGE_MS);
   if (freshness <= 0) return {};
+
+  const mpu = map.metadata.metersPerUnit;
+  const sigma = BASE_SIGMA_M + DRIFT_PER_M * (walk?.distanceM ?? 0);
+  const estimate = walk?.displacementM
+    ? { x: fixNode.x + walk.displacementM.x / mpu, y: fixNode.y + walk.displacementM.y / mpu }
+    : null;
 
   const boosts: Record<string, number> = {};
   for (const [id, units] of graphDistances(map, fix.nodeId)) {
-    const proximity = 1 - (units * map.metadata.metersPerUnit) / BOOST_RADIUS_M;
-    if (proximity > 0) boosts[id] = MAX_BOOST * proximity * Math.min(1, freshness);
+    let proximity: number;
+    if (!walk) {
+      proximity = 1 - (units * mpu) / BOOST_RADIUS_M;
+    } else {
+      const ring = ringLikelihood(units * mpu, walk.distanceM, sigma);
+      const node = map.nodes[id];
+      proximity =
+        estimate && node ? Math.max(bell(distance(node, estimate) * mpu, sigma), RING_WEIGHT * ring) : ring;
+    }
+    if (proximity > 0) boosts[id] = MAX_BOOST * proximity * freshness;
   }
   return boosts;
 }

@@ -8,10 +8,11 @@ import {
   findNodeByCode,
   isFrameReady,
   isTrained,
+  meanEmbedding,
   pickAutoMatch,
   rankMatches,
 } from '../../services/visionMatcher';
-import { proximityBoosts, type LocationFix } from '../../services/locationPrior';
+import { proximityBoosts, type LocationFix, type WalkEstimate } from '../../services/locationPrior';
 import type { MapData } from '../../types/map';
 import type { MatchResult } from '../../types/vision';
 import { Button } from '../ui/Button';
@@ -24,6 +25,10 @@ interface VisionScannerModalProps {
   onDetected: (nodeId: string) => void;
   /** Last confirmed location; nearby places get a ranking bonus while it is fresh. */
   lastFix: LocationFix | null;
+  /** Walk since the last fix from the step counter, or null when it is unavailable. */
+  walk: WalkEstimate | null;
+  /** Compass heading of the camera, or null without an absolute compass; used to weight views by direction. */
+  heading: number | null;
 }
 
 type Tab = 'visual' | 'code';
@@ -37,7 +42,14 @@ const AUTO_FRAMES = 2;
 const AUTO_MARGIN = 8;
 
 /** Camera-based relocalization: markerless (MobileNet embeddings) or QR / barcode markers. */
-export default function VisionScannerModal({ onClose, map, onDetected, lastFix }: VisionScannerModalProps) {
+export default function VisionScannerModal({
+  onClose,
+  map,
+  onDetected,
+  lastFix,
+  walk,
+  heading,
+}: VisionScannerModalProps) {
   const [tab, setTab] = useState<Tab>('visual');
   const [results, setResults] = useState<MatchResult[]>([]);
   const [ambiguous, setAmbiguous] = useState(false);
@@ -61,11 +73,13 @@ export default function VisionScannerModal({ onClose, map, onDetected, lastFix }
     [trainedNodes],
   );
   const barcodeSupported = typeof window !== 'undefined' && 'BarcodeDetector' in window;
+  // Removing what all views of the map share lets places in a uniform room be told apart.
+  const center = useMemo(() => meanEmbedding(map.nodes), [map.nodes]);
 
   // Latest values for the scan loop, which must not restart on every render.
-  const latest = useRef({ map, onDetected, onClose, tab, embed, lastFix });
+  const latest = useRef({ map, onDetected, onClose, tab, embed, lastFix, center, heading, walk });
   useEffect(() => {
-    latest.current = { map, onDetected, onClose, tab, embed, lastFix };
+    latest.current = { map, onDetected, onClose, tab, embed, lastFix, center, heading, walk };
   });
 
   const detectedRef = useRef(false);
@@ -100,7 +114,15 @@ export default function VisionScannerModal({ onClose, map, onDetected, lastFix }
       const video = videoRef.current;
       if (busy || detectedRef.current || !isFrameReady(video)) return;
       busy = true;
-      const { map: currentMap, tab: currentTab, embed, lastFix: fix } = latest.current;
+      const {
+        map: currentMap,
+        tab: currentTab,
+        embed,
+        lastFix: fix,
+        center: mean,
+        heading: liveHeading,
+        walk: liveWalk,
+      } = latest.current;
 
       const scan = async () => {
         if (currentTab === 'visual') {
@@ -108,7 +130,9 @@ export default function VisionScannerModal({ onClose, map, onDetected, lastFix }
           const ranked = rankMatches(vector, currentMap.nodes, {
             minScore: MIN_SCORE,
             limit: 4,
-            boosts: proximityBoosts(currentMap, fix, Date.now()),
+            boosts: proximityBoosts(currentMap, fix, Date.now(), liveWalk),
+            center: mean,
+            heading: liveHeading,
           });
           setResults(ranked);
           const top = pickAutoMatch(ranked, { minScore: AUTO_SCORE, minMargin: AUTO_MARGIN });

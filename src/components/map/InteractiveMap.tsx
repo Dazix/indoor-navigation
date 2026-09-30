@@ -19,6 +19,7 @@ import {
   fitView,
   MAX_ZOOM,
   markerBaseScale,
+  nodeDotScale,
   MIN_ZOOM,
   snapStep,
   viewBoxOf,
@@ -213,19 +214,24 @@ export function InteractiveMap({
   }, [view]);
 
   const vb = viewBoxOf(view, size);
-  // The <svg> box keeps the map's aspect ratio, so its pixel width gives the on-screen map scale.
+  // The <svg> fills all free space and draws the view box centred inside it, so the on-screen map
+  // scale at 1× zoom is whatever fits the whole map into that box.
   const [baseScale, setBaseScale] = useState(1);
+  const [dotScale, setDotScale] = useState(1);
   useEffect(() => {
     const svg = svgRef.current;
     if (!svg) return;
     const observer = new ResizeObserver(() => {
-      setBaseScale(markerBaseScale(svg.getBoundingClientRect().width, width));
+      const rect = svg.getBoundingClientRect();
+      const fitWidthPx = Math.min(rect.width, (rect.height * width) / height);
+      setBaseScale(markerBaseScale(fitWidthPx, width));
+      setDotScale(nodeDotScale(fitWidthPx));
     });
     observer.observe(svg);
     return () => {
       observer.disconnect();
     };
-  }, [width]);
+  }, [width, height]);
 
   /** Marker scale: nodes, labels and the route keep their on-screen size while zooming. */
   const s = baseScale / view.zoom;
@@ -369,14 +375,13 @@ export function InteractiveMap({
 
     if (g.kind === 'pinch') {
       const pinch = pinchState();
-      if (!pinch || rect.width === 0) return;
+      if (!pinch || rect.width === 0 || rect.height === 0) return;
       const zoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, (g.startView.zoom * pinch.dist) / g.startDist));
       // Keep the map point that started under the fingers under their current midpoint.
-      const w = width / zoom;
-      const h = height / zoom;
-      const x = g.startMid.x - ((pinch.mid.x - rect.left) / rect.width) * w;
-      const y = g.startMid.y - ((pinch.mid.y - rect.top) / rect.height) * h;
-      setView(clampView({ zoom, cx: x + w / 2, cy: y + h / 2 }, size));
+      const k = Math.min(rect.width / (width / zoom), rect.height / (height / zoom));
+      const cx = g.startMid.x - (pinch.mid.x - (rect.left + rect.width / 2)) / k;
+      const cy = g.startMid.y - (pinch.mid.y - (rect.top + rect.height / 2)) / k;
+      setView(clampView({ zoom, cx, cy }, size));
     } else if (g.kind === 'pan') {
       const dx = e.clientX - g.startX;
       const dy = e.clientY - g.startY;
@@ -385,14 +390,15 @@ export function InteractiveMap({
         g.moved = true;
         svg.setPointerCapture(e.pointerId);
       }
-      if (rect.width === 0) return;
+      if (rect.width === 0 || rect.height === 0) return;
       const { w, h } = viewBoxOf(g.startView, size);
+      const k = Math.min(rect.width / w, rect.height / h);
       setView(
         clampView(
           {
             zoom: g.startView.zoom,
-            cx: g.startView.cx - (dx / rect.width) * w,
-            cy: g.startView.cy - (dy / rect.height) * h,
+            cx: g.startView.cx - dx / k,
+            cy: g.startView.cy - dy / k,
           },
           size,
         ),
@@ -461,11 +467,7 @@ export function InteractiveMap({
           viewBox={`${vb.x} ${vb.y} ${vb.w} ${vb.h}`}
           role="img"
           aria-label={`Floor plan: ${map.metadata.name}`}
-          style={{
-            aspectRatio: `${width} / ${height}`,
-            width: `min(100cqw, calc(100cqh * ${width / height}))`,
-          }}
-          className={`touch-none rounded-2xl border border-slate-300/80 bg-white shadow-inner dark:border-slate-700 dark:bg-slate-900 ${
+          className={`size-full touch-none rounded-2xl border border-slate-300/80 bg-white shadow-inner dark:border-slate-700 dark:bg-slate-900 ${
             isEditor && (tool === 'add_node' || tool === 'measure') ? 'cursor-crosshair' : ''
           }`}
           onClick={handleCanvasClick}
@@ -687,15 +689,15 @@ export function InteractiveMap({
                 <circle
                   cx={node.x}
                   cy={node.y}
-                  r={(isEditor ? 2.4 : 1.7) * s}
+                  r={(isEditor ? 2.4 : 1.7) * s * dotScale}
                   fill={fill}
                   stroke="#fff"
                   strokeWidth={0.6 * s}
                 />
                 {trained && isEditor && (
                   <circle
-                    cx={node.x + 1.8 * s}
-                    cy={node.y - 1.8 * s}
+                    cx={node.x + 1.8 * s * dotScale}
+                    cy={node.y - 1.8 * s * dotScale}
                     r={0.9 * s}
                     fill="#059669"
                     stroke="#fff"
@@ -705,7 +707,7 @@ export function InteractiveMap({
                 {isEditor && (
                   <text
                     x={node.x}
-                    y={node.y - 3.4 * s}
+                    y={node.y - (2.4 * dotScale + 1) * s}
                     fontSize={2 * s}
                     textAnchor="middle"
                     className="pointer-events-none fill-slate-900 font-semibold"

@@ -1,5 +1,6 @@
 import type { MapNode } from '../types/map';
 import type { MatchResult, PixelSource } from '../types/vision';
+import { angleDiffDeg } from './geometry';
 import { TO_URL_PARAM } from './mapSharing';
 
 /** Length of the stored MobileNet embedding after downsampling (keeps exported JSON compact). */
@@ -40,21 +41,73 @@ export function compactEmbedding(raw: ArrayLike<number>, size = EMBEDDING_SIZE):
   return normalize(picked);
 }
 
+/**
+ * Mean of every learned vector of the given length across the map, or null when there are none.
+ * In a large uniform room all views share most of their features ("looks like the open space");
+ * subtracting this mean before comparing leaves what tells the places apart.
+ */
+export function meanEmbedding(nodes: Record<string, MapNode>, size = EMBEDDING_SIZE): number[] | null {
+  const sum = new Array<number>(size).fill(0);
+  let count = 0;
+  for (const node of Object.values(nodes)) {
+    for (const sample of node.embeddings) {
+      if (sample.vector.length !== size) continue;
+      for (let i = 0; i < size; i++) sum[i] = (sum[i] as number) + (sample.vector[i] as number);
+      count++;
+    }
+  }
+  return count === 0 ? null : sum.map((v) => v / count);
+}
+
+/** Cosine similarity of `a` and `b` after subtracting `center` from both; see `meanEmbedding`. */
+export function centeredCosineSimilarity(
+  a: readonly number[],
+  b: readonly number[],
+  center: readonly number[],
+): number {
+  if (a.length !== center.length || b.length !== center.length) return cosineSimilarity(a, b);
+  return cosineSimilarity(
+    a.map((v, i) => v - (center[i] as number)),
+    b.map((v, i) => v - (center[i] as number)),
+  );
+}
+
+/** Views recorded within this many degrees of the live heading count in full. */
+export const HEADING_FREE_DEG = 45;
+/** Factor for a view recorded facing the opposite way. Views in between fall off linearly. */
+export const HEADING_MIN_FACTOR = 0.85;
+
+/**
+ * Weight of a stored view for a live heading: an open space looks different in each direction, so
+ * views taken facing elsewhere count a little less. Unknown headings on either side count in full.
+ */
+export function headingFactor(sampleDeg: number | undefined, liveDeg: number | null | undefined): number {
+  if (sampleDeg === undefined || liveDeg === null || liveDeg === undefined) return 1;
+  const off = Math.max(0, angleDiffDeg(sampleDeg, liveDeg) - HEADING_FREE_DEG);
+  return 1 - (1 - HEADING_MIN_FACTOR) * (off / (180 - HEADING_FREE_DEG));
+}
+
 export interface RankOptions {
   /** Minimum score in percent for a node to be included. */
   minScore?: number;
   limit?: number;
   /** Ranking bonus per node id in percent points (see `proximityBoosts`); shown scores stay raw. */
   boosts?: Readonly<Record<string, number>>;
+  /** Map-wide mean vector (see `meanEmbedding`) removed before comparing; omit for plain cosine. */
+  center?: readonly number[] | null;
+  /** Compass heading of the live camera; views recorded facing elsewhere are weighted down. */
+  heading?: number | null;
 }
 
 /** Scores every trained node by its best-matching learned viewpoint (nearest neighbour), best first. */
 export function rankMatches(
   liveVector: readonly number[],
   nodes: Record<string, MapNode>,
-  { minScore = 0, limit = Infinity, boosts = {} }: RankOptions = {},
+  { minScore = 0, limit = Infinity, boosts = {}, center = null, heading = null }: RankOptions = {},
 ): MatchResult[] {
   const results: MatchResult[] = [];
+  const similarity = (a: readonly number[], b: readonly number[]) =>
+    center ? centeredCosineSimilarity(a, b, center) : cosineSimilarity(a, b);
 
   for (const node of Object.values(nodes)) {
     let best = 0;
@@ -62,7 +115,7 @@ export function rankMatches(
 
     if (node.embeddings.length > 0) {
       for (const sample of node.embeddings) {
-        const sim = cosineSimilarity(liveVector, sample.vector);
+        const sim = similarity(liveVector, sample.vector) * headingFactor(sample.headingDeg, heading);
         if (sim > best) {
           best = sim;
           thumbnail = sample.thumbnail;
