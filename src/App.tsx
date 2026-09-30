@@ -36,7 +36,7 @@ import {
   setFloorPlan,
   setFloorPlanFineRotation,
   setMapAspect,
-  toggleEdge,
+  addEdge,
   updateMetadata,
   updateNode,
 } from './services/mapEditing';
@@ -383,13 +383,14 @@ export default function App() {
     if (mode !== 'editor' || !map) return;
     if (tool === 'measure') {
       addMeasurePoint(point);
-    } else if (tool === 'add_node') {
+    } else if (tool === 'add_node' || tool === 'link_nodes') {
       // A tap on a corridor adds an unnamed bend point instead of a named location.
       const corridor = corridorNear(map.nodes, map.edges, near.raw, near.tolerance);
       if (corridor) {
         updateMap((m) => insertBend(m, corridor.edgeIndex, corridor.segmentIndex, corridor.point));
         return;
       }
+      if (tool === 'link_nodes') return;
       const n = Object.keys(map.nodes).length + 1;
       const id = createNodeId();
       updateMap((m) => addNode(m, { id, ...point, label: `Location ${n}`, markerCode: `LOC-${n}` }));
@@ -411,7 +412,7 @@ export default function App() {
       if (!linkFromId || linkFromId === id) {
         setLinkFromId(linkFromId === id ? null : id);
       } else {
-        updateMap((m) => toggleEdge(m, linkFromId, id));
+        updateMap((m) => addEdge(m, linkFromId, id));
         setLinkFromId(id); // keep chaining corridors from the last tapped location
       }
     } else if (tool === 'delete') {

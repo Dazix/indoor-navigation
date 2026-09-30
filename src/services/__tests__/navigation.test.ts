@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { insertBend } from '../corridors';
-import { addNode, toggleEdge } from '../mapEditing';
+import { addEdge, addNode } from '../mapEditing';
 import { createBlankMap } from '../mapLibrary';
 import { computeRoute, formatDistance } from '../navigation';
 
@@ -10,7 +10,7 @@ map = { ...map, metadata: { ...map.metadata, metersPerUnit: 0.5 } };
 map = addNode(map, { id: 'a', x: 10, y: 90, label: 'A', markerCode: '' });
 map = addNode(map, { id: 'b', x: 10, y: 50, label: 'B', markerCode: '' });
 map = addNode(map, { id: 'c', x: 50, y: 50, label: 'C', markerCode: '' });
-map = toggleEdge(toggleEdge(map, 'a', 'b'), 'b', 'c');
+map = addEdge(addEdge(map, 'a', 'b'), 'b', 'c');
 
 describe('computeRoute', () => {
   it('returns path, length and the first step heading up the map', () => {
@@ -40,7 +40,7 @@ describe('computeRoute', () => {
     bent = { ...bent, metadata: { ...bent.metadata, metersPerUnit: 0.5 } };
     bent = addNode(bent, { id: 'a', x: 10, y: 90, label: 'A', markerCode: '' });
     bent = addNode(bent, { id: 'c', x: 50, y: 50, label: 'C', markerCode: '' });
-    bent = insertBend(toggleEdge(bent, 'a', 'c'), 0, 0, { x: 10, y: 50 });
+    bent = insertBend(addEdge(bent, 'a', 'c'), 0, 0, { x: 10, y: 50 });
 
     const start = computeRoute(bent, 'a', 'c');
     expect(start?.path).toEqual(['a', 'c']);
