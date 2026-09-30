@@ -8,6 +8,11 @@ export interface EmbeddingSample {
   /** L2-normalized feature vector (256-D from MobileNet, 192-D from the fallback extractor). */
   vector: number[];
   timestamp: number;
+  /**
+   * Compass heading of the camera in degrees when the view was recorded. Missing in older maps
+   * and when the device has no absolute compass.
+   */
+  headingDeg?: number;
 }
 
 export interface MatchResult {

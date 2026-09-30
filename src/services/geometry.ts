@@ -9,6 +9,12 @@ export function normalizeDeg(deg: number): number {
   return ((deg % 360) + 360) % 360;
 }
 
+/** Smallest angle between two headings in degrees, 0–180. */
+export function angleDiffDeg(a: number, b: number): number {
+  const d = Math.abs(normalizeDeg(a) - normalizeDeg(b));
+  return d > 180 ? 360 - d : d;
+}
+
 /**
  * Bearing from `a` to `b` in degrees clockwise from the top of the map
  * (0 = up, 90 = right). Map y grows downwards, as in SVG.

@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { bearingBetween, normalizeDeg, pathLength, pointAlongPath } from '../geometry';
+import { angleDiffDeg, bearingBetween, normalizeDeg, pathLength, pointAlongPath } from '../geometry';
+
+describe('angleDiffDeg', () => {
+  it('takes the short way round the compass', () => {
+    expect(angleDiffDeg(350, 10)).toBe(20);
+    expect(angleDiffDeg(10, 350)).toBe(20);
+    expect(angleDiffDeg(0, 180)).toBe(180);
+    expect(angleDiffDeg(90, 450)).toBe(0);
+  });
+});
 
 describe('bearingBetween', () => {
   const origin = { x: 50, y: 50 };

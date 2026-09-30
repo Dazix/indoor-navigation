@@ -36,11 +36,11 @@ Proč to v open space selhává:
 
 ### 3. Vzorky s kurzem
 
-- [ ] `EmbeddingSample` (`types/vision.ts`) + Zod schéma v `mapStorage.ts`: volitelné `headingDeg`
+- [x] `EmbeddingSample` (`types/vision.ts`) + Zod schéma v `mapStorage.ts`: volitelné `headingDeg`
       (starší mapy bez něj fungují dál)
-- [ ] Při nahrávání průchodu ukládat kurz z `useOrientation`; při rozpoznávání porovnávat přednostně
+- [x] Při nahrávání průchodu ukládat kurz z `useOrientation`; při rozpoznávání porovnávat přednostně
       vzorky s kurzem ±45° (váha, ne filtr)
-- [ ] Testy schématu a váhování
+- [x] Testy schématu a váhování
 
 ### 4. Prior s PDR a kurzem místo statického disku
 

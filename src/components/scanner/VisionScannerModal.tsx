@@ -25,6 +25,8 @@ interface VisionScannerModalProps {
   onDetected: (nodeId: string) => void;
   /** Last confirmed location; nearby places get a ranking bonus while it is fresh. */
   lastFix: LocationFix | null;
+  /** Compass heading of the camera, or null without an absolute compass; used to weight views by direction. */
+  heading: number | null;
 }
 
 type Tab = 'visual' | 'code';
@@ -38,7 +40,13 @@ const AUTO_FRAMES = 2;
 const AUTO_MARGIN = 8;
 
 /** Camera-based relocalization: markerless (MobileNet embeddings) or QR / barcode markers. */
-export default function VisionScannerModal({ onClose, map, onDetected, lastFix }: VisionScannerModalProps) {
+export default function VisionScannerModal({
+  onClose,
+  map,
+  onDetected,
+  lastFix,
+  heading,
+}: VisionScannerModalProps) {
   const [tab, setTab] = useState<Tab>('visual');
   const [results, setResults] = useState<MatchResult[]>([]);
   const [ambiguous, setAmbiguous] = useState(false);
@@ -66,9 +74,9 @@ export default function VisionScannerModal({ onClose, map, onDetected, lastFix }
   const center = useMemo(() => meanEmbedding(map.nodes), [map.nodes]);
 
   // Latest values for the scan loop, which must not restart on every render.
-  const latest = useRef({ map, onDetected, onClose, tab, embed, lastFix, center });
+  const latest = useRef({ map, onDetected, onClose, tab, embed, lastFix, center, heading });
   useEffect(() => {
-    latest.current = { map, onDetected, onClose, tab, embed, lastFix, center };
+    latest.current = { map, onDetected, onClose, tab, embed, lastFix, center, heading };
   });
 
   const detectedRef = useRef(false);
@@ -103,7 +111,14 @@ export default function VisionScannerModal({ onClose, map, onDetected, lastFix }
       const video = videoRef.current;
       if (busy || detectedRef.current || !isFrameReady(video)) return;
       busy = true;
-      const { map: currentMap, tab: currentTab, embed, lastFix: fix, center: mean } = latest.current;
+      const {
+        map: currentMap,
+        tab: currentTab,
+        embed,
+        lastFix: fix,
+        center: mean,
+        heading: liveHeading,
+      } = latest.current;
 
       const scan = async () => {
         if (currentTab === 'visual') {
@@ -113,6 +128,7 @@ export default function VisionScannerModal({ onClose, map, onDetected, lastFix }
             limit: 4,
             boosts: proximityBoosts(currentMap, fix, Date.now()),
             center: mean,
+            heading: liveHeading,
           });
           setResults(ranked);
           const top = pickAutoMatch(ranked, { minScore: AUTO_SCORE, minMargin: AUTO_MARGIN });

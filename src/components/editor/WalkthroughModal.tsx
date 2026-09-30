@@ -2,6 +2,7 @@ import { Camera, Loader2, Pause, Trash2, Video } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { CAMERA_STATUS_TEXT, WIDE_CONSTRAINTS, useCamera } from '../../hooks/useCamera';
 import { CameraControls } from '../scanner/CameraControls';
+import { useOrientation } from '../../hooks/useOrientation';
 import { useTensorFlow } from '../../hooks/useTensorFlow';
 import {
   coverageReport,
@@ -54,7 +55,18 @@ export default function WalkthroughModal({ node, onClose, onSave }: WalkthroughM
     setZoom,
   } = useCamera(true, WIDE_CONSTRAINTS);
   const { status: modelStatus, engine, load, embed } = useTensorFlow();
+  const orientation = useOrientation();
   const busy = useRef(false);
+  // Read inside the capture timer, which must not restart whenever the compass moves.
+  const headingRef = useRef<number | null>(null);
+  useEffect(() => {
+    headingRef.current = orientation.absolute ? orientation.heading : null;
+  }, [orientation.absolute, orientation.heading]);
+
+  /** iOS only shows the compass prompt from a tap, so it is requested with the first one. */
+  const ensureCompass = () => {
+    if (orientation.permission === 'prompt') void orientation.request();
+  };
 
   useEffect(() => {
     void load();
@@ -71,11 +83,12 @@ export default function WalkthroughModal({ node, onClose, onSave }: WalkthroughM
     busy.current = true;
     try {
       const thumbnail = captureThumbnail(video);
+      const headingDeg = headingRef.current === null ? undefined : Math.round(headingRef.current) % 360;
       const { vector } = await embed(video);
       setSamples((prev) =>
         prev.length >= MAX_SAMPLES
           ? prev
-          : [...prev, { id: sampleId(), thumbnail, vector, timestamp: Date.now() }],
+          : [...prev, { id: sampleId(), thumbnail, vector, timestamp: Date.now(), headingDeg }],
       );
     } finally {
       busy.current = false;
@@ -178,6 +191,7 @@ export default function WalkthroughModal({ node, onClose, onSave }: WalkthroughM
           className={`flex-1 ${recording ? 'bg-amber-600! hover:bg-amber-500!' : ''}`}
           disabled={cameraStatus !== 'ready' || modelLoading || (full && !recording)}
           onClick={() => {
+            ensureCompass();
             setRecording((r) => !r);
           }}
           icon={recording ? <Pause className="size-4" /> : <Video className="size-4" />}
@@ -187,7 +201,10 @@ export default function WalkthroughModal({ node, onClose, onSave }: WalkthroughM
         <Button
           variant="dark"
           disabled={recording || cameraStatus !== 'ready' || modelLoading || full}
-          onClick={() => void capture()}
+          onClick={() => {
+            ensureCompass();
+            void capture();
+          }}
           icon={<Camera className="size-4" />}
           title="Add a single view"
         >

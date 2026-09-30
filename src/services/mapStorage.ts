@@ -12,6 +12,7 @@ const EmbeddingSampleSchema = z.object({
   thumbnail: z.string().startsWith('data:image/'),
   vector: z.array(z.number()).min(1).max(4096),
   timestamp: z.number(),
+  headingDeg: z.number().min(0).max(360).optional(),
 });
 
 const MapNodeSchema = z.object({

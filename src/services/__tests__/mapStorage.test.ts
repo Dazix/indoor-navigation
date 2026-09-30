@@ -41,6 +41,23 @@ describe('parseMapData', () => {
     expect(result.data.nodes.hub?.embeddings).toEqual([]);
   });
 
+  it('keeps the optional heading of a learned view and rejects a bad one', () => {
+    const view = { id: 'v1', thumbnail: 'data:image/jpeg;base64,AA', vector: [1], timestamp: 1 };
+    const withViews = (views: unknown[]) => {
+      const map = clone();
+      const nodes = map.nodes as Record<string, Record<string, unknown>>;
+      (nodes.hub as Record<string, unknown>).embeddings = views;
+      return map;
+    };
+
+    const ok = parseMapData(withViews([{ ...view, headingDeg: 270 }, view]));
+    expect(ok.ok).toBe(true);
+    if (ok.ok) {
+      expect(ok.data.nodes.hub?.embeddings.map((s) => s.headingDeg)).toEqual([270, undefined]);
+    }
+    expect(parseMapData(withViews([{ ...view, headingDeg: 720 }])).ok).toBe(false);
+  });
+
   it('rejects nodes outside the map size', () => {
     const map = clone();
     map.metadata = { ...(map.metadata as object), width: 100, height: 10 };

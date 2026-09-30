@@ -54,7 +54,11 @@ export function analyzeConfusability(
         ...nodes,
         [node.id]: { ...node, embeddings: node.embeddings.filter((s) => s !== sample) },
       };
-      const [top, second] = rankMatches(sample.vector, rest, { limit: 2, center });
+      const [top, second] = rankMatches(sample.vector, rest, {
+        limit: 2,
+        center,
+        heading: sample.headingDeg,
+      });
       total++;
       marginSum += top ? top.score - (second?.score ?? 0) : 0;
       if (!top || top.node.id === node.id) {

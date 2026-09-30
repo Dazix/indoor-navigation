@@ -7,6 +7,8 @@ import {
   cosineSimilarity,
   EMBEDDING_SIZE,
   findNodeByCode,
+  HEADING_MIN_FACTOR,
+  headingFactor,
   meanEmbedding,
   pickAutoMatch,
   rankMatches,
@@ -175,6 +177,33 @@ describe('pickAutoMatch', () => {
   it('counts the location boost in the lead', () => {
     expect(pickAutoMatch([result('a', 90), result('b', 80)], options)?.node.id).toBe('a');
     expect(pickAutoMatch([result('a', 90), result('b', 80, 5)], options)).toBeNull();
+  });
+});
+
+describe('headingFactor', () => {
+  it('counts views facing roughly the same way in full and unknown headings too', () => {
+    expect(headingFactor(100, 100)).toBe(1);
+    expect(headingFactor(350, 30)).toBe(1);
+    expect(headingFactor(undefined, 30)).toBe(1);
+    expect(headingFactor(30, null)).toBe(1);
+  });
+
+  it('weights views facing away down to the minimum', () => {
+    expect(headingFactor(0, 180)).toBeCloseTo(HEADING_MIN_FACTOR);
+    const side = headingFactor(0, 90);
+    expect(side).toBeLessThan(1);
+    expect(side).toBeGreaterThan(HEADING_MIN_FACTOR);
+  });
+
+  it('prefers the view recorded facing the same way when vectors tie', () => {
+    const facing = (id: string, headingDeg: number): MapNode => {
+      const node = trained(id, [[1, 0]]);
+      return { ...node, embeddings: node.embeddings.map((s) => ({ ...s, headingDeg })) };
+    };
+    const tied = { a: facing('a', 180), b: facing('b', 0) };
+    const ranked = rankMatches([1, 0], tied, { heading: 10 });
+    expect(ranked.map((r) => r.node.id)).toEqual(['b', 'a']);
+    expect(ranked.map((r) => r.score)).toEqual([100, Math.round(headingFactor(180, 10) * 100)]);
   });
 });
 

@@ -784,6 +784,7 @@ export default function App() {
             map={map}
             onDetected={relocate}
             lastFix={lastFix}
+            heading={orientation.absolute ? orientation.heading : null}
           />
         )}
         {walkthroughOpen && selectedNode && (
