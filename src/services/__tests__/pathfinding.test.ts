@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { Edge, MapNode } from '../types/map';
-import { buildGraph, findShortestPath } from './pathfinding';
+import type { Edge, MapNode } from '../../types/map';
+import { buildGraph, findShortestPath } from '../pathfinding';
 
 function node(id: string, x: number, y: number): MapNode {
   return { id, x, y, label: id, markerCode: '', embeddings: [] };

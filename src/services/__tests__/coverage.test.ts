@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import type { EmbeddingSample } from '../types/vision';
-import { coverageReport, GOOD_VIEWS, isRepeating, markNewViews, MIN_VIEWS } from './coverage';
-import { EMBEDDING_SIZE } from './visionMatcher';
+import type { EmbeddingSample } from '../../types/vision';
+import { coverageReport, GOOD_VIEWS, isRepeating, markNewViews, MIN_VIEWS } from '../coverage';
+import { EMBEDDING_SIZE } from '../visionMatcher';
 
 /** Unit vector pointing along axis `axis`; different axes are orthogonal, i.e. different views. */
 function view(axis: number, size = EMBEDDING_SIZE): EmbeddingSample {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { MapData, MapNode } from '../types/map';
-import { BOOST_MAX_AGE_MS, MAX_BOOST, proximityBoosts } from './locationPrior';
+import type { MapData, MapNode } from '../../types/map';
+import { BOOST_MAX_AGE_MS, MAX_BOOST, proximityBoosts } from '../locationPrior';
 
 function node(id: string, x: number): MapNode {
   return { id, x, y: 0, label: id, markerCode: '', embeddings: [] };

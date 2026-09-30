@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { decodeSignal, encodeSignal, SIGNAL_PREFIX } from './p2pSignal';
+import { decodeSignal, encodeSignal, SIGNAL_PREFIX } from '../p2pSignal';
 
 const SDP = [
   'v=0',

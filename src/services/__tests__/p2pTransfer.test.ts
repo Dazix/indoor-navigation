@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { gunzipText, gzipText, joinChunks, splitChunks } from './p2pTransfer';
+import { gunzipText, gzipText, joinChunks, splitChunks } from '../p2pTransfer';
 
 describe('p2p transfer payload', () => {
   it('splits into fixed-size chunks and joins them back', () => {

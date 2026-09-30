@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { clampView, fitView, markerBaseScale, snapStep, viewBoxOf, zoomAround } from './viewport';
+import { clampView, fitView, markerBaseScale, snapStep, viewBoxOf, zoomAround } from '../viewport';
 
 const size = { width: 100, height: 50 };
 

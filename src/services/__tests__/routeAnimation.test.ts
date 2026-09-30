@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { pulseDurationMs, revealDurationMs, routeKey } from './routeAnimation';
+import { pulseDurationMs, revealDurationMs, routeKey } from '../routeAnimation';
 
 describe('routeKey', () => {
   it('identifies a route by its node path', () => {

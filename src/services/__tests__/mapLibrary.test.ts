@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { MapLibrary } from '../types/map';
-import { parseMapData } from './mapStorage';
+import type { MapLibrary } from '../../types/map';
+import { parseMapData } from '../mapStorage';
 import {
   addToLibrary,
   createBlankMap,
@@ -9,7 +9,7 @@ import {
   removeFromLibrary,
   uniqueName,
   updateSummary,
-} from './mapLibrary';
+} from '../mapLibrary';
 
 const library: MapLibrary = {
   activeMapId: 'b',
