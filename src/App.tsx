@@ -11,6 +11,7 @@ import { CloudBanner } from './components/cloud/CloudBanner';
 import { CloudSettingsModal } from './components/cloud/CloudSettingsModal';
 import { ConflictModal } from './components/cloud/ConflictModal';
 import { SyncStatus } from './components/cloud/SyncStatus';
+import { useAutoMapByLocation } from './hooks/useAutoMapByLocation';
 import { useCloudSync } from './hooks/useCloudSync';
 import { useMapLibrary } from './hooks/useMapLibrary';
 import { useSyncState } from './hooks/useSyncState';
@@ -279,6 +280,19 @@ export default function App() {
       setMapLinkDone(true);
     });
   }, [libraryStatus, findBySource, importFromUrl]);
+
+  // Without a link that names a map or a spot, open the map nearest to the device.
+  useAutoMapByLocation({
+    enabled:
+      libraryStatus === 'ready' &&
+      mapLinkDone &&
+      INITIAL_MAP_LINK === null &&
+      INITIAL_TARGET === null &&
+      INITIAL_CLOUD_CONFIG === null,
+    maps: library.maps,
+    activeMapId,
+    switchMap: library.switchMap,
+  });
 
   const { reset: resetSteps } = pdr;
 

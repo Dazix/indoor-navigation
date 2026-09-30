@@ -46,6 +46,14 @@ export interface MapMetadata {
   height: number;
   /** Rotation of the floor plan image only (degrees clockwise); nodes and rooms are not affected. */
   floorPlanRotationDeg: number;
+  /** Where the building is in the world; used to open the nearest map on start. */
+  geo?: GeoPoint;
+}
+
+/** WGS84 position in degrees. */
+export interface GeoPoint {
+  lat: number;
+  lng: number;
 }
 
 /** Lightweight entry in the map library; the full MapData lives in IndexedDB. */
@@ -55,6 +63,8 @@ export interface MapSummary {
   updatedAt: number;
   /** URL the map was loaded from via a share link; loading the same link again updates this map. */
   sourceUrl?: string;
+  /** Copy of `metadata.geo`, so the nearest map can be picked without loading map bodies. */
+  geo?: GeoPoint;
 }
 
 export interface MapLibrary {
