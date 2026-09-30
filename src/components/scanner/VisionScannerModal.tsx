@@ -12,7 +12,7 @@ import {
   pickAutoMatch,
   rankMatches,
 } from '../../services/visionMatcher';
-import { proximityBoosts, type LocationFix } from '../../services/locationPrior';
+import { proximityBoosts, type LocationFix, type WalkEstimate } from '../../services/locationPrior';
 import type { MapData } from '../../types/map';
 import type { MatchResult } from '../../types/vision';
 import { Button } from '../ui/Button';
@@ -25,6 +25,8 @@ interface VisionScannerModalProps {
   onDetected: (nodeId: string) => void;
   /** Last confirmed location; nearby places get a ranking bonus while it is fresh. */
   lastFix: LocationFix | null;
+  /** Walk since the last fix from the step counter, or null when it is unavailable. */
+  walk: WalkEstimate | null;
   /** Compass heading of the camera, or null without an absolute compass; used to weight views by direction. */
   heading: number | null;
 }
@@ -45,6 +47,7 @@ export default function VisionScannerModal({
   map,
   onDetected,
   lastFix,
+  walk,
   heading,
 }: VisionScannerModalProps) {
   const [tab, setTab] = useState<Tab>('visual');
@@ -74,9 +77,9 @@ export default function VisionScannerModal({
   const center = useMemo(() => meanEmbedding(map.nodes), [map.nodes]);
 
   // Latest values for the scan loop, which must not restart on every render.
-  const latest = useRef({ map, onDetected, onClose, tab, embed, lastFix, center, heading });
+  const latest = useRef({ map, onDetected, onClose, tab, embed, lastFix, center, heading, walk });
   useEffect(() => {
-    latest.current = { map, onDetected, onClose, tab, embed, lastFix, center, heading };
+    latest.current = { map, onDetected, onClose, tab, embed, lastFix, center, heading, walk };
   });
 
   const detectedRef = useRef(false);
@@ -118,6 +121,7 @@ export default function VisionScannerModal({
         lastFix: fix,
         center: mean,
         heading: liveHeading,
+        walk: liveWalk,
       } = latest.current;
 
       const scan = async () => {
@@ -126,7 +130,7 @@ export default function VisionScannerModal({
           const ranked = rankMatches(vector, currentMap.nodes, {
             minScore: MIN_SCORE,
             limit: 4,
-            boosts: proximityBoosts(currentMap, fix, Date.now()),
+            boosts: proximityBoosts(currentMap, fix, Date.now(), liveWalk),
             center: mean,
             heading: liveHeading,
           });

@@ -41,14 +41,19 @@ Proč to v open space selhává:
 - [x] Při nahrávání průchodu ukládat kurz z `useOrientation`; při rozpoznávání porovnávat přednostně
       vzorky s kurzem ±45° (váha, ne filtr)
 - [x] Testy schématu a váhování
+- [ ] Volitelně, jen pokud měření na dvou telefonech ukáže rozdíl: odhad odchylky kompasu zařízení.
+      Při potvrzeném rozpoznání (QR nebo jistá shoda) porovnat živý kurz s kurzem nejlépe sedícího
+      pohledu, rozdíly průměrovat kruhovým průměrem a uložit jako offset zařízení v `localStorage`.
+      Řeší konstantní rozdíl mezi telefony, ne rušení podle místa. Alternativa: hrubší sektory a širší
+      bezplatné pásmo než ±45°.
 
 ### 4. Prior s PDR a kurzem místo statického disku
 
-- [ ] `locationPrior.ts`: místo "blízko fixu" dávat bonus uzlům, jejichž graf. vzdálenost od fixu odpovídá
+- [x] `locationPrior.ts`: místo "blízko fixu" dávat bonus uzlům, jejichž graf. vzdálenost od fixu odpovídá
       ušlé vzdálenosti (`pdr.distanceM`, tolerance roste s ušlou cestou kvůli driftu)
-- [ ] Kurz (`useOrientation` + `northOffsetDeg`) vybere hranu/směr; chodba bez větvení = silný prior
-- [ ] Reset PDR při každém potvrzeném fixu
-- [ ] Testy na grafu s více větvemi
+- [x] Kurz (`useOrientation` + `northOffsetDeg`) vybere hranu/směr; chodba bez větvení = silný prior
+- [x] Reset PDR při každém potvrzeném fixu
+- [x] Testy na grafu s více větvemi
 
 ### 5. Časové vyhlazení
 

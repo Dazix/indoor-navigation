@@ -21,7 +21,8 @@ import { useOrientation } from './hooks/useOrientation';
 import { usePDR } from './hooks/usePDR';
 import { useTensorFlow } from './hooks/useTensorFlow';
 import { normalizeDeg } from './services/geometry';
-import type { LocationFix } from './services/locationPrior';
+import type { LocationFix, WalkEstimate } from './services/locationPrior';
+import { planDisplacement } from './services/walkTrack';
 import { corridorNear, deleteBend, deleteEdge, insertBend, moveBend } from './services/corridors';
 import { imageRatio, pickImageFile, readClipboardImage, readFloorPlanFile } from './services/imageFiles';
 import {
@@ -194,7 +195,7 @@ export default function App() {
 
   const sensorsEnabled = mode !== 'editor';
   const orientation = useOrientation(sensorsEnabled);
-  const pdr = usePDR(sensorsEnabled);
+  const pdr = usePDR(sensorsEnabled, orientation.absolute ? orientation.heading : null);
 
   const route = useMemo(
     () => (map ? computeRoute(map, currentLocation, destination, pdr.distanceM) : null),
@@ -296,7 +297,22 @@ export default function App() {
     switchMap: library.switchMap,
   });
 
-  const { reset: resetSteps } = pdr;
+  const { reset: resetSteps, markFix } = pdr;
+
+  // How far and which way the user walked since the last confirmed location; null without a step
+  // counter, when the scanner falls back to a plain disc around the fix.
+  const { permission: motionPermission, sinceFix, stepLengthM } = pdr;
+  const northOffsetDeg = map?.metadata.northOffsetDeg ?? 0;
+  const walkEstimate = useMemo<WalkEstimate | null>(
+    () =>
+      motionPermission === 'granted'
+        ? {
+            distanceM: sinceFix.steps * stepLengthM,
+            displacementM: planDisplacement(sinceFix, northOffsetDeg),
+          }
+        : null,
+    [motionPermission, sinceFix, stepLengthM, northOffsetDeg],
+  );
 
   /** Starts a new leg from the last waypoint the user walked past. */
   const navigateTo = useCallback(
@@ -313,8 +329,9 @@ export default function App() {
       setNav((n) => ({ ...n, from }));
       setLastFix({ nodeId: from, at: Date.now() });
       resetSteps();
+      markFix();
     },
-    [resetSteps],
+    [resetSteps, markFix],
   );
 
   // Location link (?to=<node id>): navigate there on the active map, or on the library map that has it.
@@ -784,6 +801,7 @@ export default function App() {
             map={map}
             onDetected={relocate}
             lastFix={lastFix}
+            walk={walkEstimate}
             heading={orientation.absolute ? orientation.heading : null}
           />
         )}

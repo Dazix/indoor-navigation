@@ -55,3 +55,64 @@ describe('proximityBoosts', () => {
     expect(proximityBoosts(map, { nodeId: 'gone', at: 1000 }, 1000)).toEqual({});
   });
 });
+
+describe('proximityBoosts with a walk estimate', () => {
+  // 1 unit = 1 m. b is a junction: a and c lie on a line through it, d branches off to the south.
+  const junction: MapData = {
+    ...map,
+    metadata: { ...map.metadata, metersPerUnit: 1 },
+    nodes: { a: node('a', 0), b: node('b', 20), c: node('c', 40), d: { ...node('d', 20), y: 20 } },
+    edges: [
+      ['a', 'b'],
+      ['b', 'c'],
+      ['b', 'd'],
+    ],
+  };
+  const fixAtB = { nodeId: 'b', at: 1000 };
+  const boost = (boosts: Record<string, number>, id: string) => boosts[id] ?? 0;
+
+  it('favours the fix node when the user has not walked', () => {
+    const boosts = proximityBoosts(junction, fixAtB, 1000, { distanceM: 0, displacementM: { x: 0, y: 0 } });
+    expect(boost(boosts, 'b')).toBeCloseTo(MAX_BOOST);
+    expect(boost(boosts, 'a')).toBeLessThan(0.1);
+  });
+
+  it('treats places at the walked distance as likeliest when no heading is known', () => {
+    const boosts = proximityBoosts(junction, fixAtB, 1000, { distanceM: 20, displacementM: null });
+    // a, c and d are all 20 m of corridor away; b, where the user may have looped back, is less likely.
+    expect(boost(boosts, 'a')).toBeCloseTo(MAX_BOOST);
+    expect(boost(boosts, 'c')).toBeCloseTo(boost(boosts, 'a'));
+    expect(boost(boosts, 'd')).toBeCloseTo(boost(boosts, 'a'));
+    expect(boost(boosts, 'b')).toBeLessThan(boost(boosts, 'a'));
+  });
+
+  it('uses the compass displacement to pick the branch', () => {
+    const east = proximityBoosts(junction, fixAtB, 1000, { distanceM: 20, displacementM: { x: 20, y: 0 } });
+    expect(boost(east, 'c')).toBeCloseTo(MAX_BOOST);
+    expect(boost(east, 'c')).toBeGreaterThan(boost(east, 'a') + 4);
+    expect(boost(east, 'c')).toBeGreaterThan(boost(east, 'd') + 4);
+
+    const south = proximityBoosts(junction, fixAtB, 1000, { distanceM: 20, displacementM: { x: 0, y: 20 } });
+    expect(boost(south, 'd')).toBeGreaterThan(boost(south, 'c') + 4);
+  });
+
+  it('keeps the walked-distance prior at half weight when the compass points the wrong way', () => {
+    const wrong = proximityBoosts(junction, fixAtB, 1000, { distanceM: 20, displacementM: { x: -20, y: 0 } });
+    // The compass says west (a); c is still on a corridor 20 m away.
+    expect(boost(wrong, 'a')).toBeCloseTo(MAX_BOOST);
+    expect(boost(wrong, 'c')).toBeCloseTo(MAX_BOOST / 2);
+  });
+
+  it('widens with the distance walked and still fades with the age of the fix', () => {
+    const near = proximityBoosts(junction, fixAtB, 1000, { distanceM: 5, displacementM: null });
+    const far = proximityBoosts(junction, fixAtB, 1000, { distanceM: 40, displacementM: null });
+    // Two sigmas off the walked distance: nodes 20 m away score higher when the error is larger.
+    expect(boost(far, 'a')).toBeGreaterThan(boost(near, 'a'));
+
+    const old = proximityBoosts(junction, fixAtB, 1000 + BOOST_MAX_AGE_MS / 2, {
+      distanceM: 20,
+      displacementM: null,
+    });
+    expect(boost(old, 'a')).toBeCloseTo(MAX_BOOST / 2);
+  });
+});
