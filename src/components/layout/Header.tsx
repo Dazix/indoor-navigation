@@ -15,6 +15,8 @@ interface HeaderProps {
   modelStatus: ModelStatus;
   /** Cloud sync status and actions, shown next to the title. */
   cloudSlot?: ReactNode;
+  /** Local edits not yet in the cloud; shown as a dot on the Editor tab. */
+  unsavedChanges?: boolean;
 }
 
 export function Header({
@@ -27,6 +29,7 @@ export function Header({
   engine,
   modelStatus,
   cloudSlot,
+  unsavedChanges = false,
 }: HeaderProps) {
   const sorted = [...maps].sort((a, b) => a.name.localeCompare(b.name));
   const badge =
@@ -89,7 +92,7 @@ export function Header({
             onClick={() => {
               onModeChange('user');
             }}
-            className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${
+            className={`rounded-lg px-2.5 py-1.5 text-xs font-semibold whitespace-nowrap transition-colors sm:px-3 ${
               mode !== 'editor' ? 'bg-brand-600 text-white shadow-md' : 'text-slate-400 hover:text-white'
             }`}
           >
@@ -102,12 +105,19 @@ export function Header({
             onClick={() => {
               onModeChange('editor');
             }}
-            className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${
+            aria-label={unsavedChanges ? 'Editor (unsaved changes)' : 'Editor'}
+            className={`relative flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold whitespace-nowrap transition-colors sm:px-3 ${
               mode === 'editor' ? 'bg-amber-600 text-white shadow-md' : 'text-slate-400 hover:text-white'
             }`}
           >
             <PencilRuler className="size-3.5" />
-            <span>Editor</span>
+            <span className="hidden min-[400px]:inline">Editor</span>
+            {unsavedChanges && (
+              <span
+                aria-hidden="true"
+                className="absolute -top-0.5 -right-0.5 size-2 rounded-full bg-red-500 ring-2 ring-slate-800"
+              />
+            )}
           </button>
         </div>
       </div>

@@ -57,7 +57,7 @@ export function SyncStatus({ configured, status, dirty, busy, onPublish, onOpenS
         type="button"
         onClick={onOpenSettings}
         title={`${look.label}. Open cloud settings.`}
-        className={`flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[10px] font-semibold ${look.tone}`}
+        className={`flex shrink-0 items-center gap-1 rounded-md border px-1.5 py-0.5 text-[10px] font-semibold whitespace-nowrap ${look.tone}`}
       >
         <Icon className={`size-3 ${busy ? 'animate-spin' : ''}`} />
         <span className="sm:hidden">{look.shortLabel}</span>
@@ -69,10 +69,11 @@ export function SyncStatus({ configured, status, dirty, busy, onPublish, onOpenS
           onClick={onPublish}
           disabled={busy !== null || status === 'offline'}
           title={status === 'offline' ? 'You are offline. Publish when you are back online.' : undefined}
-          className="flex items-center gap-1 rounded-md bg-brand-600 px-2 py-0.5 text-[10px] font-bold text-white hover:bg-brand-500 disabled:pointer-events-none disabled:opacity-50"
+          className="flex shrink-0 items-center gap-1 rounded-md bg-brand-600 px-2 py-0.5 text-[10px] font-bold whitespace-nowrap text-white hover:bg-brand-500 disabled:pointer-events-none disabled:opacity-50"
         >
           <CloudUpload className="size-3" />
-          <span>Sync to Cloud</span>
+          <span className="min-[400px]:hidden">Sync</span>
+          <span className="hidden min-[400px]:inline">Sync to Cloud</span>
         </button>
       )}
     </div>

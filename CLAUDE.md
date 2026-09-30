@@ -47,6 +47,6 @@ Key conventions and gotchas:
 
 ## Workflow
 
-Approved implementation plans are saved in `docs/plan-<topic>.md` as `- [ ]` checklists. Work through them item by item and only tick off items (`- [x]`) as they are finished, without rewriting the plan text.
+Do not save implementation plans to `docs/` unless explicitly asked. If asked, write `docs/plan-<topic>.md` as a `- [ ]` checklist and only tick off items (`- [x]`) as they are finished, without rewriting the plan text.
 
 `README.md` has the user-facing feature descriptions and editor and sharing workflows.

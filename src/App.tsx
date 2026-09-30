@@ -537,21 +537,24 @@ export default function App() {
           }}
           engine={tf.engine}
           modelStatus={tf.status}
+          unsavedChanges={cloud.configured && cloud.status === 'unsaved'}
           cloudSlot={
-            <SyncStatus
-              configured={cloud.configured}
-              status={cloud.status}
-              dirty={!cloud.entry || cloud.entry.dirty}
-              busy={cloud.busy}
-              onPublish={() => {
-                // Several projects and no link yet: the person picks where this map goes first.
-                if (cloud.needsPublishChoice) setCloudOpen(true);
-                else void cloud.publish();
-              }}
-              onOpenSettings={() => {
-                setCloudOpen(true);
-              }}
-            />
+            mode === 'editor' ? (
+              <SyncStatus
+                configured={cloud.configured}
+                status={cloud.status}
+                dirty={!cloud.entry || cloud.entry.dirty}
+                busy={cloud.busy}
+                onPublish={() => {
+                  // Several projects and no link yet: the person picks where this map goes first.
+                  if (cloud.needsPublishChoice) setCloudOpen(true);
+                  else void cloud.publish();
+                }}
+                onOpenSettings={() => {
+                  setCloudOpen(true);
+                }}
+              />
+            ) : null
           }
         />
       )}
