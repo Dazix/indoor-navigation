@@ -156,7 +156,7 @@ export default function App() {
     activeMapId,
     maps: library.maps,
     libraryReady: library.status === 'ready',
-    importMap: library.importMap,
+    importMap: library.importCloudMap,
     replaceMap: library.replaceMap,
     switchMap: library.switchMap,
     navigating: destination !== null,
@@ -523,7 +523,11 @@ export default function App() {
               status={cloud.status}
               dirty={!cloud.entry || cloud.entry.dirty}
               busy={cloud.busy}
-              onPublish={() => void cloud.publish()}
+              onPublish={() => {
+                // Several projects and no link yet: the person picks where this map goes first.
+                if (cloud.needsPublishChoice) setCloudOpen(true);
+                else void cloud.publish();
+              }}
               onOpenSettings={() => {
                 setCloudOpen(true);
               }}

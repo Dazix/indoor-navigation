@@ -1,5 +1,5 @@
 import type { MapData } from '../../types/map';
-import type { MapHead } from './mapDocs';
+import type { MapHead, MapMeta } from './mapDocs';
 
 export interface CloudUser {
   uid: string;
@@ -40,7 +40,15 @@ export interface DocStore {
    * Publishes the main document atomically: only when the stored revision equals `expectedRevision`
    * (null: the document must not exist yet). Rejects with a `conflict` CloudError otherwise.
    */
-  commitHead: (id: string, head: MapHead, expectedRevision: number | null) => Promise<void>;
+  commitHead: (
+    id: string,
+    head: MapHead,
+    expectedRevision: number | null,
+    /** Catalog document, stored in the same transaction under its own id. */
+    meta: { id: string; data: MapMeta },
+  ) => Promise<void>;
+  /** All catalog documents of the collection. */
+  listMeta: () => Promise<unknown[]>;
   deleteDocs: (ids: readonly string[]) => Promise<void>;
   /** Live updates of one document; the callback receives null when it does not exist. */
   watch: (id: string, onData: (data: unknown) => void, onError: (err: CloudError) => void) => () => void;
@@ -62,6 +70,8 @@ export interface PulledMap {
 export interface CloudAdapter {
   /** False for the local-only fallback. */
   readonly configured: boolean;
+  /** Maps of this cloud project, by name. Maps published before the catalog existed appear after their next publish. */
+  listMaps(): Promise<MapMeta[]>;
   /** Main document of a cloud map, or null when it does not exist. */
   getHead(mapId: string): Promise<MapHead | null>;
   /** Downloads a cloud map, reusing matching parts of `local`. Null when the map does not exist. */

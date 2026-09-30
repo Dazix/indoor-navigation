@@ -4,9 +4,13 @@ import {
   chunksToFetch,
   cloudToMap,
   mapToCloud,
+  metaDocId,
+  metaFromHead,
   parseMapHead,
+  parseMapMeta,
   planPush,
   type MapHead,
+  type MapMeta,
 } from './mapDocs';
 import { CloudError, type AuthFacade, type CloudAdapter, type DocStore, type PulledMap } from './types';
 
@@ -74,6 +78,15 @@ export function createCloudAdapter(
     configured: true,
     getHead,
 
+    async listMaps() {
+      const listed: MapMeta[] = [];
+      for (const raw of await store.listMeta()) {
+        const meta = parseMapMeta(raw);
+        if (meta) listed.push(meta);
+      }
+      return listed.sort((a, b) => a.name.localeCompare(b.name));
+    },
+
     async pull(mapId, local) {
       for (let attempt = 1; ; attempt++) {
         try {
@@ -106,7 +119,10 @@ export function createCloudAdapter(
 
       const { write, deleteIds } = planPush(mapId, next, remote);
       await store.writeDocs(write.map((entry) => ({ id: entry.id, data: entry.doc })));
-      await store.commitHead(mapId, next.head, expectedRevision);
+      await store.commitHead(mapId, next.head, expectedRevision, {
+        id: metaDocId(mapId),
+        data: metaFromHead(mapId, next.head),
+      });
       // Superseded chunks are garbage only now that the new head is published. Failing to delete them
       // wastes space but never breaks a reader, so it does not fail the push.
       if (deleteIds.length > 0) await store.deleteDocs(deleteIds).catch(() => undefined);

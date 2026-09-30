@@ -5,6 +5,7 @@ const notConfigured = () => new CloudError('unknown', 'Cloud sync is not configu
 /** Fallback when no Firebase credentials exist: the app stays purely local and reads find nothing. */
 export const nullAdapter: CloudAdapter = {
   configured: false,
+  listMaps: () => Promise.resolve([]),
   getHead: () => Promise.resolve(null),
   pull: () => Promise.resolve(null),
   push: () => Promise.reject(notConfigured()),

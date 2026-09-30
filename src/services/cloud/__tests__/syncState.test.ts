@@ -3,6 +3,8 @@ import {
   decidePush,
   decideRemoteUpdate,
   deriveStatus,
+  entrySourceId,
+  linkedLocalIds,
   linkMap,
   markDirty,
   markSynced,
@@ -23,8 +25,35 @@ const entry = (over: Partial<MapSyncEntry> = {}): MapSyncEntry => ({
 
 describe('state transitions', () => {
   it('links a map as unsaved at revision 0', () => {
-    const state = linkMap({}, 'local1', 'office');
-    expect(state.local1).toEqual({ cloudMapId: 'office', baseRevision: 0, dirty: true, lastSyncedAt: null });
+    const state = linkMap({}, 'local1', 'office', 'praha');
+    expect(state.local1).toEqual({
+      sourceId: 'praha',
+      cloudMapId: 'office',
+      baseRevision: 0,
+      dirty: true,
+      lastSyncedAt: null,
+    });
+  });
+
+  it('falls back to the first source for entries from before sources existed', () => {
+    const sources = [{ id: 'praha' }, { id: 'liberec' }];
+    expect(entrySourceId(entry(), sources)).toBe('praha');
+    expect(entrySourceId(entry({ sourceId: 'liberec' }), sources)).toBe('liberec');
+    expect(entrySourceId(entry(), [])).toBeUndefined();
+  });
+
+  it('finds the local maps linked to one source by cloud map id', () => {
+    const sources = [{ id: 'praha' }, { id: 'liberec' }];
+    const state: SyncState = {
+      a: entry({ cloudMapId: 'm1', sourceId: 'praha' }),
+      b: entry({ cloudMapId: 'm2', sourceId: 'liberec' }),
+      c: entry({ cloudMapId: 'm3' }),
+    };
+    expect([...linkedLocalIds(state, 'praha', sources)]).toEqual([
+      ['m1', 'a'],
+      ['m3', 'c'],
+    ]);
+    expect([...linkedLocalIds(state, 'liberec', sources)]).toEqual([['m2', 'b']]);
   });
 
   it('marks only linked maps dirty and is a no-op when already dirty', () => {
