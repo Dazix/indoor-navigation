@@ -30,6 +30,16 @@ export function markerBaseScale(widthPx: number, mapWidth: number): number {
   return pxPerUnit > MARKER_MAX_PX_PER_UNIT ? MARKER_MAX_PX_PER_UNIT / pxPerUnit : 1;
 }
 
+/** A map drawn narrower than this on screen is on a phone. */
+const PHONE_MAP_MAX_PX = 520;
+/** Node dots are drawn this much smaller on a phone, where the map is small and the dots crowd it. */
+const PHONE_NODE_SHRINK = 0.8;
+
+/** Size multiplier of the node dots (not labels or hit areas) for a map drawn `widthPx` wide. */
+export function nodeDotScale(widthPx: number): number {
+  return widthPx > 0 && widthPx < PHONE_MAP_MAX_PX ? PHONE_NODE_SHRINK : 1;
+}
+
 export function fitView(size: MapSize): MapView {
   return { zoom: 1, cx: size.width / 2, cy: size.height / 2 };
 }
