@@ -47,6 +47,11 @@ const MapHeadSchema = z.object({
   revision: z.number().int().min(0),
   updatedAt: z.number(),
   updatedBy: z.string().nullable(),
+  /**
+   * Checksum of the complete map as published (see `mapContentHash`). A client checks it after reassembly,
+   * so data that its version of the app cannot represent is never taken for a complete copy.
+   */
+  contentHash: z.string().optional(),
   chunks: z.object({
     floorPlan: ChunkRefSchema.optional(),
     embeddings: z.record(z.string(), ChunkRefSchema),
@@ -148,6 +153,45 @@ export function contentHash(text: string): string {
   return `${text.length.toString(36)}-${(hash >>> 0).toString(36)}`;
 }
 
+/** Copy with sorted keys and without `undefined`, so equal data always serializes to the same text. */
+function canonical(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(canonical);
+  if (value !== null && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value)
+        .filter(([, v]) => v !== undefined)
+        .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+        .map(([k, v]) => [k, canonical(v)]),
+    );
+  }
+  return value;
+}
+
+/** Checksum of everything a map consists of, for data that already went through `parseMapData`. */
+function hashParsedMap(map: MapData): string {
+  return contentHash(
+    JSON.stringify(
+      canonical({
+        metadata: map.metadata,
+        floorPlanImage: map.floorPlanImage,
+        nodes: map.nodes,
+        // Empty bend lists are stored as plain edges in the cloud, so both spell the same edge.
+        edges: map.edges.map(([from, to, bends]) => (bends?.length ? [from, to, bends] : [from, to])),
+        rooms: map.rooms,
+      }),
+    ),
+  );
+}
+
+/**
+ * Checksum over the whole map, learned views included. The map is normalized through the schema first,
+ * so it equals the checksum of the same data after a round trip through the cloud or a file.
+ */
+export function mapContentHash(map: MapData): string {
+  const parsed = parseMapData(map);
+  return hashParsedMap(parsed.ok ? parsed.data : map);
+}
+
 export function splitText(text: string, size = CHUNK_CHARS): string[] {
   const parts: string[] = [];
   for (let i = 0; i < text.length; i += size) parts.push(text.slice(i, i + size));
@@ -239,6 +283,7 @@ export function mapToCloud(map: MapData, meta: CloudMeta): CloudMapDocs {
       revision: meta.revision,
       updatedAt: meta.updatedAt,
       updatedBy: meta.updatedBy,
+      contentHash: mapContentHash(map),
       chunks: { ...(floorPlan ? { floorPlan } : {}), embeddings },
     } satisfies MapHead),
   ) as MapHead;
@@ -335,13 +380,21 @@ export function cloudToMap(
       const text = textOf(embeddingGroup(id));
       nodes[id] = { ...node, embeddings: text ? (JSON.parse(text) as unknown) : [] };
     }
-    return parseMapData({
+    const parsed = parseMapData({
       metadata: head.metadata,
       floorPlanImage: textOf(FLOOR_PLAN_GROUP) ?? head.floorPlanImage,
       nodes,
       edges: edgesFromCloud(head.edges),
       rooms: head.rooms,
     });
+    if (parsed.ok && head.contentHash && hashParsedMap(parsed.data) !== head.contentHash) {
+      return {
+        ok: false,
+        error:
+          'This app version cannot read the whole cloud map and would lose part of it. Reload the app to update it, then try again.',
+      };
+    }
+    return parsed;
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : 'The cloud map could not be read' };
   }

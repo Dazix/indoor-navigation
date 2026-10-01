@@ -11,6 +11,7 @@ import {
   cloudToMap,
   edgesFromCloud,
   edgesToCloud,
+  mapContentHash,
   mapToCloud,
   parseMapHead,
   planPush,
@@ -119,6 +120,24 @@ describe('chunkDocId', () => {
   });
 });
 
+describe('mapContentHash', () => {
+  it('ignores key order and empty bend lists', () => {
+    const map = makeMap();
+    const reordered: MapData = { ...map, nodes: Object.fromEntries(Object.entries(map.nodes).reverse()) };
+    expect(mapContentHash(reordered)).toBe(mapContentHash(map));
+  });
+
+  it('changes when anything is lost, down to the tiles of one view', () => {
+    const withTiles = makeMap();
+    const node = withTiles.nodes.a;
+    if (!node) throw new Error('fixture node missing');
+    withTiles.nodes.a = { ...node, embeddings: [{ ...sample('t1'), tiles: [[0.5], [0.1]] }] };
+    const stripped = makeMap();
+    stripped.nodes.a = { ...node, embeddings: [sample('t1')] };
+    expect(mapContentHash(withTiles)).not.toBe(mapContentHash(stripped));
+  });
+});
+
 describe('mapToCloud', () => {
   it('keeps learned views out of the main document', () => {
     const { head, chunks } = mapToCloud(makeMap(), meta);
@@ -182,6 +201,39 @@ describe('cloudToMap', () => {
     const map = makeMap({ floorPlanImage: dataUrl(CHUNK_CHARS + 100) });
     const result = pull(mapToCloud(map, meta));
     expect(result).toEqual({ ok: true, data: map });
+  });
+
+  it('keeps the tiles of learned views', () => {
+    const map = makeMap();
+    const node = map.nodes.a;
+    if (!node) throw new Error('fixture node missing');
+    map.nodes.a = {
+      ...node,
+      embeddings: [
+        {
+          ...sample('t1'),
+          tiles: [
+            [0.5, 0.5],
+            [0.1, 0.9],
+          ],
+        },
+      ],
+    };
+    const result = pull(mapToCloud(map, meta));
+    expect(result).toEqual({ ok: true, data: map });
+  });
+
+  it('refuses a copy whose content differs from the published checksum', () => {
+    const docs = mapToCloud(makeMap(), meta);
+    const tampered = { ...docs, head: { ...docs.head, contentHash: 'other' } };
+    const result = pull(tampered);
+    expect(result.ok).toBe(false);
+  });
+
+  it('accepts heads from before checksums existed', () => {
+    const docs = mapToCloud(makeMap(), meta);
+    const legacy = { ...docs.head, contentHash: undefined };
+    expect(pull({ ...docs, head: legacy }).ok).toBe(true);
   });
 
   it('round-trips through the JSON a real Firestore read would return', () => {

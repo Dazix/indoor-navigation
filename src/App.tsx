@@ -9,6 +9,7 @@ import { Modal } from './components/ui/Modal';
 import { NavigationBar } from './components/ui/NavigationBar';
 import { CloudBanner } from './components/cloud/CloudBanner';
 import { CloudSettingsModal } from './components/cloud/CloudSettingsModal';
+import { Toast } from './components/ui/Toast';
 import { ConflictModal } from './components/cloud/ConflictModal';
 import { SyncStatus } from './components/cloud/SyncStatus';
 import { useAutoMapByLocation } from './hooks/useAutoMapByLocation';
@@ -618,7 +619,6 @@ export default function App() {
             onRedo={library.redo}
             selectedNode={selectedNode}
             linkFrom={linkFromId ? (map.nodes[linkFromId] ?? null) : null}
-            message={errorText ? { tone: 'error', text: errorText } : notice}
             onMetadataChange={(patch) => {
               updateMap((m) => updateMetadata(m, patch), `meta:${Object.keys(patch).join(',')}`);
             }}
@@ -848,23 +848,6 @@ export default function App() {
               This map is empty. Open the Editor to add locations and corridors.
             </p>
           )}
-
-          {mode === 'user' && errorText && (
-            <p
-              role="alert"
-              className="absolute inset-x-3 bottom-3 z-10 mx-auto max-w-md rounded-xl bg-red-600 px-3 py-2 text-center text-xs text-white shadow-lg"
-            >
-              {errorText}
-            </p>
-          )}
-          {mode === 'user' && !errorText && notice && (
-            <p
-              role="status"
-              className="absolute inset-x-3 bottom-3 z-10 mx-auto max-w-md rounded-xl bg-emerald-600 px-3 py-2 text-center text-xs text-white shadow-lg"
-            >
-              {notice.text}
-            </p>
-          )}
         </main>
       </div>
 
@@ -984,6 +967,7 @@ export default function App() {
         }}
         cloud={cloud}
       />
+      <Toast message={errorText ? { tone: 'error', text: errorText } : notice} />
       <ConflictModal
         conflict={cloud.conflict}
         onResolve={(choice) => void cloud.resolveConflict(choice)}
