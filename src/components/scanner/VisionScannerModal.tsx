@@ -310,7 +310,7 @@ export default function VisionScannerModal({
                 </>
               )}
             </span>
-            <div className="grid h-2/3 w-2/3 grid-cols-3 grid-rows-3 self-center rounded-2xl border border-cyan-400/50 bg-cyan-500/5">
+            <div className="grid aspect-[224/298] h-3/4 grid-cols-3 grid-rows-3 self-center rounded-2xl border border-cyan-400/50 bg-cyan-500/5">
               {Array.from({ length: 9 }, (_, i) => (
                 <div key={i} className="border border-cyan-400/15" />
               ))}
