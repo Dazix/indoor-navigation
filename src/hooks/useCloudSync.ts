@@ -142,6 +142,8 @@ export function useCloudSync(options: Options) {
   useEffect(() => {
     latest.current = { map, activeMapId, sync, navigating, maps, sources };
   });
+  /** Revision this device last pushed or pulled per local map; its listener echo is not a foreign change. */
+  const ownRevisions = useRef(new Map<string, number>());
   const busyRef = useRef<Busy>(null);
   const setBusyBoth = useCallback((next: Busy) => {
     busyRef.current = next;
@@ -235,6 +237,7 @@ export function useCloudSync(options: Options) {
           await openConflict(sourceId, localMapId, cloudMapId);
           return false;
         }
+        ownRevisions.current.set(localMapId, pulled.head.revision);
         await replaceMap(localMapId, pulled.map);
         setSync((state) => markSynced(state, localMapId, pulled.head.revision, Date.now()));
         setPendingUpdateFor(null);
@@ -258,6 +261,7 @@ export function useCloudSync(options: Options) {
       setBusyBoth('push');
       try {
         const revision = await adapterOf(sourceId).push(cloudMapId, pushed, expected);
+        ownRevisions.current.set(localMapId, revision);
         const editedMeanwhile = latest.current.map !== pushed;
         setSync((state) => markSynced(state, localMapId, revision, Date.now(), editedMeanwhile));
         setNetworkError(false);
@@ -389,7 +393,8 @@ export function useCloudSync(options: Options) {
       const linked = latest.current.sync[localId];
       // An in-flight push or pull of ours also changes the document; the request itself settles state.
       if (!linked || busyRef.current) return;
-      switch (decideRemoteUpdate(linked, revision, latest.current.navigating)) {
+      const own = ownRevisions.current.get(localId) ?? null;
+      switch (decideRemoteUpdate(linked, revision, latest.current.navigating, own)) {
         case 'ignore':
           setPendingUpdateFor(null);
           break;

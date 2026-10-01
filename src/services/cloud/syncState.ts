@@ -126,13 +126,16 @@ export type RemoteUpdateDecision = 'ignore' | 'apply' | 'defer' | 'conflict';
 /**
  * What to do when the cloud map changes while it is open: apply silently when nothing local is at stake,
  * hold the update during active navigation, and never overwrite unsynced local edits.
+ * `ownRevision` is the revision this device itself just pushed or pulled: its echo from the live listener
+ * can arrive before the sync entry reflects it, and must not look like someone else's change.
  */
 export function decideRemoteUpdate(
   entry: MapSyncEntry,
   remoteRevision: number,
   navigating: boolean,
+  ownRevision: number | null = null,
 ): RemoteUpdateDecision {
-  if (remoteRevision <= entry.baseRevision) return 'ignore';
+  if (remoteRevision <= entry.baseRevision || remoteRevision === ownRevision) return 'ignore';
   if (entry.dirty) return 'conflict';
   return navigating ? 'defer' : 'apply';
 }
