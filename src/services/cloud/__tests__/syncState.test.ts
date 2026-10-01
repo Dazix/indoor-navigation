@@ -4,6 +4,7 @@ import {
   decideRemoteUpdate,
   deriveStatus,
   entrySourceId,
+  hasUnflaggedChanges,
   linkedLocalIds,
   linkMap,
   markDirty,
@@ -73,6 +74,15 @@ describe('state transitions', () => {
       lastSyncedAt: 555,
     });
     expect(markSynced(state, 'missing', 7, 555)).toBe(state);
+  });
+
+  it('detects changes that were never flagged by comparing checksums', () => {
+    const synced = markSynced({ local1: entry({ dirty: true }) }, 'local1', 7, 555, false, 'abc').local1;
+    if (!synced) throw new Error('entry missing');
+    expect(hasUnflaggedChanges(synced, 'abc')).toBe(false);
+    expect(hasUnflaggedChanges(synced, 'xyz')).toBe(true);
+    expect(hasUnflaggedChanges({ ...synced, dirty: true }, 'xyz')).toBe(false);
+    expect(hasUnflaggedChanges(entry(), 'xyz')).toBe(false);
   });
 
   it('keeps the dirty flag for edits made while a push was in flight', () => {

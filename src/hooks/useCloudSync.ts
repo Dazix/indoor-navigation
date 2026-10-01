@@ -1,15 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react';
 import { createFirebaseAdapter } from '../services/cloud/firebaseAdapter';
 import { toCloudError } from '../services/cloud/errors';
-import type { MapMeta } from '../services/cloud/mapDocs';
+import { mapContentHash, type MapMeta } from '../services/cloud/mapDocs';
 import { nullAdapter } from '../services/cloud/nullAdapter';
 import {
   decidePush,
   decideRemoteUpdate,
   deriveStatus,
   entrySourceId,
+  hasUnflaggedChanges,
   linkedLocalIds,
   linkMap,
+  markDirty,
   markSynced,
   unlinkMap,
   type MapSyncEntry,
@@ -239,7 +241,8 @@ export function useCloudSync(options: Options) {
         }
         ownRevisions.current.set(localMapId, pulled.head.revision);
         await replaceMap(localMapId, pulled.map);
-        setSync((state) => markSynced(state, localMapId, pulled.head.revision, Date.now()));
+        const hash = mapContentHash(pulled.map);
+        setSync((state) => markSynced(state, localMapId, pulled.head.revision, Date.now(), false, hash));
         setPendingUpdateFor(null);
         setNetworkError(false);
         return true;
@@ -263,7 +266,8 @@ export function useCloudSync(options: Options) {
         const revision = await adapterOf(sourceId).push(cloudMapId, pushed, expected);
         ownRevisions.current.set(localMapId, revision);
         const editedMeanwhile = latest.current.map !== pushed;
-        setSync((state) => markSynced(state, localMapId, revision, Date.now(), editedMeanwhile));
+        const hash = mapContentHash(pushed);
+        setSync((state) => markSynced(state, localMapId, revision, Date.now(), editedMeanwhile, hash));
         setNetworkError(false);
         notify({ tone: 'info', text: 'Published to the cloud.' });
       } catch (err) {
@@ -469,12 +473,15 @@ export function useCloudSync(options: Options) {
               return;
             }
             const localId = await importMap(pulled.map, opensNow);
+            const hash = mapContentHash(pulled.map);
             setSync((state) =>
               markSynced(
                 linkMap(state, localId, cloudMapId, source.id),
                 localId,
                 pulled.head.revision,
                 Date.now(),
+                false,
+                hash,
               ),
             );
             notify({ tone: 'info', text: `Opened “${pulled.map.metadata.name}” from the cloud.` });
@@ -489,6 +496,16 @@ export function useCloudSync(options: Options) {
     }
     // `signedInKey` only re-runs the effect after a sign-in or sign-out; the body does not read it.
   }, [adapterOf, fail, importMap, libraryReady, notify, setSync, signedInKey, sources, switchMap, urlConfig]);
+
+  // Safety net for edits that were not flagged: a map that differs from what was last synced is unsaved.
+  useEffect(() => {
+    if (!map || !activeMapId || busy) return;
+    const linked = sync[activeMapId];
+    if (!linked || linked.dirty || linked.syncedHash === undefined) return;
+    if (hasUnflaggedChanges(linked, mapContentHash(map))) {
+      setSync((state) => markDirty(state, activeMapId));
+    }
+  }, [map, activeMapId, sync, busy, setSync]);
 
   // Forget sync entries of maps that were deleted locally.
   useEffect(() => {

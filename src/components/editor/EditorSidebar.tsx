@@ -43,7 +43,6 @@ interface EditorSidebarProps {
   onRedo: () => void;
   selectedNode: MapNode | null;
   linkFrom: MapNode | null;
-  message: { tone: 'error' | 'info'; text: string } | null;
   onMetadataChange: (patch: Partial<MapMetadata>) => void;
   onFloorPlanUpload: (file: File) => void;
   onFloorPlanRemove: () => void;
@@ -142,7 +141,7 @@ function HistoryButton(props: {
 
 /** Map authoring panel: map settings, floor plan, import/export and graph tools. */
 export function EditorSidebar(props: EditorSidebarProps) {
-  const { map, tool, onToolChange, selectedNode, linkFrom, message } = props;
+  const { map, tool, onToolChange, selectedNode, linkFrom } = props;
   const planInput = useRef<HTMLInputElement>(null);
   const jsonInput = useRef<HTMLInputElement>(null);
   const activeTool = TOOLS.find((t) => t.id === tool);
@@ -229,19 +228,6 @@ export function EditorSidebar(props: EditorSidebarProps) {
           Scroll or pinch to zoom, drag an empty spot to pan. Zoomed in, points snap more finely.
         </p>
       </section>
-
-      {message && (
-        <p
-          role={message.tone === 'error' ? 'alert' : 'status'}
-          className={`rounded-xl px-3 py-2 text-xs ${
-            message.tone === 'error'
-              ? 'bg-red-50 text-red-700 dark:bg-red-950/60 dark:text-red-300'
-              : 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300'
-          }`}
-        >
-          {message.text}
-        </p>
-      )}
 
       {selectedNode && (
         <NodeDetailsCard

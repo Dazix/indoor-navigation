@@ -12,6 +12,8 @@ const MapSyncEntrySchema = z.object({
   baseRevision: z.number().int().min(0),
   /** True while the local copy has edits that are not in the cloud. */
   dirty: z.boolean(),
+  /** Checksum of the map as last pushed or pulled; a different checksum means unflagged local changes. */
+  syncedHash: z.string().optional(),
   lastSyncedAt: z.number().nullable(),
 });
 
@@ -77,6 +79,7 @@ export function markDirty(state: SyncState, localMapId: string): SyncState {
 /**
  * Records that the cloud is at `revision` and this device has taken part in it (after a push, or after
  * applying a pull). `stillDirty` keeps the dirty flag for edits made while the request was in flight.
+ * `hash` is the checksum of the map that was exchanged.
  */
 export function markSynced(
   state: SyncState,
@@ -84,13 +87,29 @@ export function markSynced(
   revision: number,
   now: number,
   stillDirty = false,
+  hash?: string,
 ): SyncState {
   const entry = state[localMapId];
   if (!entry) return state;
   return {
     ...state,
-    [localMapId]: { ...entry, baseRevision: revision, dirty: stillDirty, lastSyncedAt: now },
+    [localMapId]: {
+      ...entry,
+      baseRevision: revision,
+      dirty: stillDirty,
+      syncedHash: hash,
+      lastSyncedAt: now,
+    },
   };
+}
+
+/**
+ * True when a map that is flagged as synced no longer matches what was synced: it was changed without
+ * the edit being noticed, so it must not be shown as up to date. Entries without a checksum (from before
+ * checksums existed) cannot be checked.
+ */
+export function hasUnflaggedChanges(entry: MapSyncEntry, currentHash: string): boolean {
+  return !entry.dirty && entry.syncedHash !== undefined && entry.syncedHash !== currentHash;
 }
 
 export function nextRevision(remoteRevision: number | null): number {
