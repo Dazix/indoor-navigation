@@ -1,6 +1,13 @@
 import { useCallback, useSyncExternalStore } from 'react';
 import type { MobileNet } from '@tensorflow-models/mobilenet';
-import { compactEmbedding, cropToFrameAspect, extractFallbackEmbedding } from '../services/visionMatcher';
+import {
+  compactEmbedding,
+  cropToFrameAspect,
+  EMBEDDING_SIZE,
+  extractFallbackEmbedding,
+  splitIntoTiles,
+  TILE_EMBEDDING_SIZE,
+} from '../services/visionMatcher';
 import type { EmbeddingEngine, ModelStatus, PixelSource } from '../types/vision';
 
 type TF = typeof import('@tensorflow/tfjs');
@@ -63,17 +70,20 @@ export function loadMobileNet(): Promise<LoadedModel | null> {
 export interface Embedding {
   vector: number[];
   engine: EmbeddingEngine;
+  /** Vectors of the left and right half of the frame, from the same engine as `vector`. */
+  tiles: number[][];
 }
 
-/** Extracts a feature vector from a frame. Every tensor is released before returning. */
-export async function embedFrame(rawSource: PixelSource): Promise<Embedding> {
-  const source = cropToFrameAspect(rawSource);
-  if (loaded) {
+type SingleEmbedding = Pick<Embedding, 'vector' | 'engine'>;
+
+/** Embeds one already cropped image. `allowModel` false forces the fallback extractor. */
+async function embedSource(source: PixelSource, size: number, allowModel: boolean): Promise<SingleEmbedding> {
+  if (loaded && allowModel) {
     const { tf, model } = loaded;
     // tidy() frees every intermediate tensor; only the returned embedding survives until dispose().
     const tensor = tf.tidy(() => model.infer(source, true));
     try {
-      return { vector: compactEmbedding(await tensor.data()), engine: 'mobilenet' };
+      return { vector: compactEmbedding(await tensor.data(), size), engine: 'mobilenet' };
     } catch (err) {
       console.error('MobileNet inference failed, using the fallback extractor.', err);
     } finally {
@@ -81,6 +91,21 @@ export async function embedFrame(rawSource: PixelSource): Promise<Embedding> {
     }
   }
   return { vector: extractFallbackEmbedding(source), engine: 'fallback' };
+}
+
+/**
+ * Extracts a feature vector from a frame, plus one for each half of it. Every tensor is released
+ * before returning. If the model fails on the whole frame, the halves use the fallback too, so all
+ * vectors of one embedding come from the same engine.
+ */
+export async function embedFrame(rawSource: PixelSource): Promise<Embedding> {
+  const source = cropToFrameAspect(rawSource);
+  const whole = await embedSource(source, EMBEDDING_SIZE, true);
+  const tiles: number[][] = [];
+  for (const tile of splitIntoTiles(source)) {
+    tiles.push((await embedSource(tile, TILE_EMBEDDING_SIZE, whole.engine === 'mobilenet')).vector);
+  }
+  return { ...whole, tiles };
 }
 
 /** Number of live tensors; exposed for leak checks during development. */

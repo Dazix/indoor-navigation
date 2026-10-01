@@ -13,6 +13,12 @@ export interface EmbeddingSample {
    * and when the device has no absolute compass.
    */
   headingDeg?: number;
+  /**
+   * Feature vectors of the left and right half of the frame. They keep the layout of the scene, so
+   * rooms that are mirror images of each other (window left vs. right of the TV) can be told apart.
+   * Missing in older maps; such views are compared on the whole frame only.
+   */
+  tiles?: number[][];
 }
 
 export interface MatchResult {

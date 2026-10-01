@@ -72,6 +72,58 @@ export function centeredCosineSimilarity(
   );
 }
 
+/** Number of vertical strips a frame is split into (left half, right half). */
+export const TILE_COUNT = 2;
+/** Length of a stored MobileNet tile vector. */
+export const TILE_EMBEDDING_SIZE = 128;
+/** Share of the tile similarity in the score of a view that has tiles; the rest is the whole frame. */
+export const TILE_WEIGHT = 0.5;
+
+/**
+ * Per tile position, the mean of every learned tile vector of the given length, or null when no view
+ * has tiles of that size. The counterpart of `meanEmbedding` for the halves of the frame.
+ */
+export function meanTileEmbeddings(
+  nodes: Record<string, MapNode>,
+  size = TILE_EMBEDDING_SIZE,
+): number[][] | null {
+  const sums = Array.from({ length: TILE_COUNT }, () => new Array<number>(size).fill(0));
+  let count = 0;
+  for (const node of Object.values(nodes)) {
+    for (const sample of node.embeddings) {
+      const tiles = sample.tiles;
+      if (tiles?.length !== TILE_COUNT || tiles.some((t) => t.length !== size)) continue;
+      tiles.forEach((tile, t) => {
+        const sum = sums[t] as number[];
+        for (let i = 0; i < size; i++) sum[i] = (sum[i] as number) + (tile[i] as number);
+      });
+      count++;
+    }
+  }
+  return count === 0 ? null : sums.map((sum) => sum.map((v) => v / count));
+}
+
+/**
+ * Mean similarity of the live tiles to the stored ones, position by position, or null when either
+ * side has no tiles or they do not fit (other extractor, older map).
+ */
+function tileSimilarity(
+  live: readonly (readonly number[])[] | null,
+  stored: readonly (readonly number[])[] | undefined,
+  centers: readonly (readonly number[])[] | null,
+): number | null {
+  if (live?.length !== TILE_COUNT || stored?.length !== TILE_COUNT) return null;
+  let sum = 0;
+  for (let t = 0; t < TILE_COUNT; t++) {
+    const a = live[t] as readonly number[];
+    const b = stored[t] as readonly number[];
+    if (a.length === 0 || a.length !== b.length) return null;
+    const center = centers?.[t];
+    sum += center ? centeredCosineSimilarity(a, b, center) : cosineSimilarity(a, b);
+  }
+  return sum / TILE_COUNT;
+}
+
 /** Views recorded within this many degrees of the live heading count in full. */
 export const HEADING_FREE_DEG = 45;
 /** Factor for a view recorded facing the opposite way. Views in between fall off linearly. */
@@ -97,13 +149,25 @@ export interface RankOptions {
   center?: readonly number[] | null;
   /** Compass heading of the live camera; views recorded facing elsewhere are weighted down. */
   heading?: number | null;
+  /** Live left/right tile vectors; views that have tiles are then also compared by layout. */
+  tiles?: readonly (readonly number[])[] | null;
+  /** Per-tile mean vectors (see `meanTileEmbeddings`) removed before comparing tiles. */
+  tileCenters?: readonly (readonly number[])[] | null;
 }
 
 /** Scores every trained node by its best-matching learned viewpoint (nearest neighbour), best first. */
 export function rankMatches(
   liveVector: readonly number[],
   nodes: Record<string, MapNode>,
-  { minScore = 0, limit = Infinity, boosts = {}, center = null, heading = null }: RankOptions = {},
+  {
+    minScore = 0,
+    limit = Infinity,
+    boosts = {},
+    center = null,
+    heading = null,
+    tiles = null,
+    tileCenters = null,
+  }: RankOptions = {},
 ): MatchResult[] {
   const results: MatchResult[] = [];
   const similarity = (a: readonly number[], b: readonly number[]) =>
@@ -115,7 +179,10 @@ export function rankMatches(
 
     if (node.embeddings.length > 0) {
       for (const sample of node.embeddings) {
-        const sim = similarity(liveVector, sample.vector) * headingFactor(sample.headingDeg, heading);
+        const whole = similarity(liveVector, sample.vector);
+        const layout = tileSimilarity(tiles, sample.tiles, tileCenters);
+        const blended = layout === null ? whole : whole * (1 - TILE_WEIGHT) + layout * TILE_WEIGHT;
+        const sim = blended * headingFactor(sample.headingDeg, heading);
         if (sim > best) {
           best = sim;
           thumbnail = sample.thumbnail;
@@ -272,6 +339,21 @@ export function cropToFrameAspect(source: PixelSource): PixelSource {
   const { sx, sy, sw, sh } = centerCropRect(width, height);
   ctx.drawImage(source, sx, sy, sw, sh, 0, 0, FRAME_WIDTH, FRAME_HEIGHT);
   return frameCanvas;
+}
+
+const tileCanvases: HTMLCanvasElement[] = [];
+
+/** Left and right half of an already cropped frame. The returned canvases are reused by the next call. */
+export function splitIntoTiles(frame: PixelSource): PixelSource[] {
+  const { width, height } = pixelSize(frame);
+  const tileWidth = Math.floor(width / TILE_COUNT);
+  return Array.from({ length: TILE_COUNT }, (_, t) => {
+    const canvas = (tileCanvases[t] ??= document.createElement('canvas'));
+    canvas.width = tileWidth;
+    canvas.height = height;
+    canvas.getContext('2d')?.drawImage(frame, t * tileWidth, 0, tileWidth, height, 0, 0, tileWidth, height);
+    return canvas;
+  });
 }
 
 /** Small JPEG preview of the current frame for the viewpoint gallery. */
