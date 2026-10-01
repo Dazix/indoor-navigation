@@ -14,14 +14,17 @@ Firebase project (see [Cloud sync](#cloud-sync-optional-firebase-backend)).
 - **2D navigation.** Tap a room or location to get the shortest walkable route (A\* over the corridor graph),
   with real distances in meters. You can also search for a place by name; focusing the empty search field
   lists the last 5 places you picked on that map.
+- **Map orientation.** A wide plan on a portrait phone (or a tall one on a landscape screen) is turned 90°
+  counter-clockwise automatically when that makes it much bigger. The rotate button below the zoom buttons
+  cycles Auto, Original and Turned. In Auto the Editor keeps the plan upright. The saved map is not changed.
 - **Markerless visual localization.** Walk through a place once in the Editor and the app records camera
   keyframes as MobileNet v2 embeddings. The scanner then recognizes where you are by cosine similarity (k-NN)
   against those views. Everything runs on the device with TensorFlow.js.
 - **QR / code markers.** You can also locate yourself by scanning a marker (via `BarcodeDetector` where the
   browser supports it) or by typing its code.
-- **Manual location.** Press **I’m here** in the bottom bar, then search for a place by name or tap a room or
+- **Manual location.** On a desktop press **I’m here** in the bottom bar (phones use the camera button instead), then search for a place by name or tap a room or
   location on the map to set where you are, without the camera.
-- **AR view.** The camera passthrough shows a floor-projected arrow towards the next waypoint. It uses the
+- **AR view.** (Phones and tablets only; the camera locate button and AR are hidden on a desktop.) The camera passthrough shows a floor-projected arrow towards the next waypoint. It uses the
   compass (`DeviceOrientationEvent`, including the iOS 13+ permission prompt).
 - **Step tracking (PDR).** Accelerometer step detection moves your dot along the route between scans.
 - **Offline PWA.** The app shell and sample map are precached. The AI model (~7.5 MB) is downloaded the

@@ -10,6 +10,8 @@ interface NavigationBarProps {
   onSetLocation: () => void;
   locating: boolean;
   canSetLocation: boolean;
+  /** Camera locate button and AR view; hidden on a desktop where they have nothing to work with. */
+  showCameraTools: boolean;
 }
 
 function Tab({
@@ -55,6 +57,7 @@ export function NavigationBar({
   onSetLocation,
   locating,
   canSetLocation,
+  showCameraTools,
 }: NavigationBarProps) {
   return (
     <nav
@@ -70,30 +73,39 @@ export function NavigationBar({
             onModeChange('user');
           }}
         />
-        <Tab
-          active={locating}
-          pressed={locating}
-          disabled={!canSetLocation}
-          label={locating ? 'Cancel' : 'I’m here'}
-          icon={locating ? <X className="size-5" /> : <MapPin className="size-5" />}
-          onClick={onSetLocation}
-        />
-        <button
-          type="button"
-          onClick={onScan}
-          aria-label="Locate me with the camera"
-          className="relative -top-5 flex size-15 items-center justify-center rounded-full bg-gradient-to-tr from-brand-600 to-brand-400 text-white shadow-lg shadow-brand-500/40 transition active:scale-95"
-        >
-          <ScanLine className="size-7" />
-        </button>
-        <Tab
-          active={mode === 'ar'}
-          label="AR View"
-          icon={<Camera className="size-5" />}
-          onClick={() => {
-            onModeChange('ar');
-          }}
-        />
+        {!showCameraTools && (
+          <Tab
+            active={locating}
+            pressed={locating}
+            disabled={!canSetLocation}
+            label={locating ? 'Cancel' : 'I’m here'}
+            icon={locating ? <X className="size-5" /> : <MapPin className="size-5" />}
+            onClick={onSetLocation}
+          />
+        )}
+        {showCameraTools && (
+          <>
+            {/* Hidden, not removed, in AR so the other tabs keep their place when switching. */}
+            <button
+              type="button"
+              onClick={onScan}
+              aria-label="Locate me with the camera"
+              className={`relative -top-5 flex size-15 items-center justify-center rounded-full bg-gradient-to-tr from-brand-600 to-brand-400 text-white shadow-lg shadow-brand-500/40 transition active:scale-95 ${
+                mode === 'ar' ? 'invisible' : ''
+              }`}
+            >
+              <ScanLine className="size-7" />
+            </button>
+            <Tab
+              active={mode === 'ar'}
+              label="AR View"
+              icon={<Camera className="size-5" />}
+              onClick={() => {
+                onModeChange('ar');
+              }}
+            />
+          </>
+        )}
       </div>
     </nav>
   );

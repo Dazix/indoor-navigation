@@ -1,4 +1,4 @@
-import { ArrowLeft, Check, Compass, Footprints } from 'lucide-react';
+import { Check, Compass, Footprints } from 'lucide-react';
 import { formatDistance, type Route } from '../../services/navigation';
 import type { SensorPermission } from '../../types/navigation';
 import { Button } from '../ui/Button';
@@ -11,7 +11,6 @@ interface ARCompassHUDProps {
   sensorPermission: SensorPermission;
   steps: number;
   onEnableSensors: () => void;
-  onBack: () => void;
 }
 
 const pill =
@@ -26,20 +25,11 @@ export function ARCompassHUD({
   sensorPermission,
   steps,
   onEnableSensors,
-  onBack,
 }: ARCompassHUDProps) {
   return (
     <>
       <div className="pt-safe absolute inset-x-0 top-0 z-10">
-        <div className="flex items-center justify-between gap-2 p-3">
-          <button
-            type="button"
-            onClick={onBack}
-            className={`${pill} flex items-center gap-1.5`}
-            aria-label="Back to map"
-          >
-            <ArrowLeft className="size-4" /> Map
-          </button>
+        <div className="flex items-center justify-end gap-2 p-3">
           <div className="flex items-center gap-2">
             <span className={`${pill} flex items-center gap-1.5`}>
               <Footprints className="size-3.5" /> {steps}

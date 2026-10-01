@@ -72,6 +72,59 @@ export function zoomAround(view: MapView, zoom: number, anchor: Point, size: Map
   );
 }
 
+/** User's choice of map orientation: follow the screen shape or force one. */
+export type MapRotationPref = 'auto' | 'normal' | 'rotated';
+
+export function parseMapRotationPref(raw: unknown): MapRotationPref | null {
+  return raw === 'auto' || raw === 'normal' || raw === 'rotated' ? raw : null;
+}
+
+/** Size of the canvas the map is drawn in: the sides swap when the map is turned a quarter. */
+export function displaySize(size: MapSize, rotated: boolean): MapSize {
+  return rotated ? { width: size.height, height: size.width } : size;
+}
+
+/** Where a map point lands in the canvas; a rotated map is turned 90° counter-clockwise. */
+export function mapToDisplay(p: Point, size: MapSize, rotated: boolean): Point {
+  return rotated ? { x: p.y, y: size.width - p.x } : p;
+}
+
+/** SVG transform that turns the map content 90° counter-clockwise into the swapped canvas. */
+export function rotatedMapTransform(size: MapSize): string {
+  return `matrix(0 -1 1 0 0 ${size.width})`;
+}
+
+/** Turning the map has to enlarge it this much to switch on, or shrink it this much to switch off. */
+const ROTATE_GAIN = 1.25;
+
+/** Whether turning the map by 90° fits it much better into a `box` of pixels; in between it keeps `wasRotated`. */
+export function shouldRotateMap(
+  box: { width: number; height: number },
+  size: MapSize,
+  wasRotated: boolean,
+): boolean {
+  if (box.width <= 0 || box.height <= 0) return wasRotated;
+  const normal = Math.min(box.width / size.width, box.height / size.height);
+  const turned = Math.min(box.width / size.height, box.height / size.width);
+  const gain = turned / normal;
+  if (gain > ROTATE_GAIN) return true;
+  if (gain < 1 / ROTATE_GAIN) return false;
+  return wasRotated;
+}
+
+/** Whether the map is shown turned. Auto only turns it in navigation, the editor keeps the plan upright. */
+export function resolveRotated(
+  pref: MapRotationPref,
+  isEditor: boolean,
+  box: { width: number; height: number },
+  size: MapSize,
+  wasRotated: boolean,
+): boolean {
+  if (pref === 'rotated') return true;
+  if (pref === 'normal' || isEditor) return false;
+  return shouldRotateMap(box, size, wasRotated);
+}
+
 /** Snap step for placing points: finer when zoomed in for precise drawing. */
 export function snapStep(zoom: number): number {
   return zoom >= 4 ? 0.1 : zoom >= 2 ? 0.25 : 0.5;

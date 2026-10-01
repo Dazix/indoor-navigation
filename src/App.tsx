@@ -17,6 +17,7 @@ import { useMapLibrary } from './hooks/useMapLibrary';
 import { useSyncState } from './hooks/useSyncState';
 import { hasUrlConfig, parseUrlConfig, stripConfigParams } from './services/cloudConfig';
 import { readMap } from './services/mapLibrary';
+import { useLocalStorage } from './hooks/useLocalStorage';
 import { useOrientation } from './hooks/useOrientation';
 import { usePDR } from './hooks/usePDR';
 import { useTensorFlow } from './hooks/useTensorFlow';
@@ -50,9 +51,11 @@ import {
   shareMap,
   TO_URL_PARAM,
 } from './services/mapSharing';
+import { detectHandheldDevice } from './services/deviceCapabilities';
 import { importMapFromFile, resolveAssetUrl } from './services/mapStorage';
 import { computeRoute, formatDistance } from './services/navigation';
 import { hrefForMode, modeFromHash } from './services/modeRoute';
+import { parseMapRotationPref, type MapRotationPref } from './services/viewport';
 import type { MapData, Point } from './types/map';
 import type { AppMode, EditorTool } from './types/navigation';
 import type { P2PRole } from './components/maps/P2PTransferModal';
@@ -105,6 +108,11 @@ export default function App() {
   const { map, activeMapId, updateMap } = library;
   const tf = useTensorFlow();
 
+  const [mapRotation, setMapRotation] = useLocalStorage<MapRotationPref>(
+    'indoor-nav:map-rotation',
+    'auto',
+    parseMapRotationPref,
+  );
   const [mode, setMode] = useState<AppMode>(() => modeFromHash(window.location.hash));
   const [tool, setTool] = useState<EditorTool>('select');
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
@@ -112,6 +120,7 @@ export default function App() {
   /** Ends of the reference line of the measure tool (0–2 points). */
   const [measure, setMeasure] = useState<Point[]>([]);
   const [scannerOpen, setScannerOpen] = useState(false);
+  const [handheld] = useState(detectHandheldDevice);
   const [walkthroughOpen, setWalkthroughOpen] = useState(false);
   const [qualityOpen, setQualityOpen] = useState(false);
   const [managerOpen, setManagerOpen] = useState(false);
@@ -714,9 +723,6 @@ export default function App() {
                 orientation={orientation}
                 steps={pdr.steps}
                 onEnableSensors={enableSensors}
-                onBack={() => {
-                  setMode('user');
-                }}
               />
             </Suspense>
           ) : (
@@ -738,6 +744,8 @@ export default function App() {
               }}
               focus={mode === 'editor' ? mapFocus : null}
               pickingLocation={picking}
+              mapRotation={mapRotation}
+              onMapRotationChange={setMapRotation}
               measureLine={mode === 'editor' && tool === 'measure' ? measure : undefined}
               onBendInsert={(edgeIndex, segmentIndex, point) => {
                 updateMap((m) => insertBend(m, edgeIndex, segmentIndex, point));
@@ -798,7 +806,9 @@ export default function App() {
                     {destinationNode.label}
                   </p>
                   {!currentLocation && (
-                    <p className="text-[11px] text-amber-600">Scan or tap “I’m here” to set your location</p>
+                    <p className="text-[11px] text-amber-600">
+                      {handheld ? 'Scan to set your location' : 'Tap “I’m here” to set your location'}
+                    </p>
                   )}
                 </div>
               </div>
@@ -859,7 +869,7 @@ export default function App() {
         </main>
       </div>
 
-      {mode === 'user' && (
+      {mode !== 'editor' && (
         <NavigationBar
           mode={mode}
           onModeChange={changeMode}
@@ -868,6 +878,7 @@ export default function App() {
           }}
           locating={picking}
           canSetLocation={Object.keys(map.nodes).length > 0}
+          showCameraTools={handheld}
           onSetLocation={() => {
             setPickingLocation((p) => !p);
           }}
