@@ -147,6 +147,15 @@ describe('decideRemoteUpdate', () => {
     expect(decideRemoteUpdate(entry({ baseRevision: 3, dirty: true }), 4, false)).toBe('conflict');
     expect(decideRemoteUpdate(entry({ baseRevision: 3, dirty: true }), 4, true)).toBe('conflict');
   });
+
+  it('ignores the revision this device just published, even before its sync entry is updated', () => {
+    // Stale entry: the push finished but React has not yet stored baseRevision 4 and dirty false.
+    expect(decideRemoteUpdate(entry({ baseRevision: 3, dirty: true }), 4, false, 4)).toBe('ignore');
+  });
+
+  it('still reports a revision newer than the one this device published', () => {
+    expect(decideRemoteUpdate(entry({ baseRevision: 3, dirty: true }), 5, false, 4)).toBe('conflict');
+  });
 });
 
 describe('parseSyncState', () => {
