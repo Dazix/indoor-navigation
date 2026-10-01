@@ -22,9 +22,9 @@ Firebase project (see [Cloud sync](#cloud-sync-optional-firebase-backend)).
   against those views. Everything runs on the device with TensorFlow.js.
 - **QR / code markers.** You can also locate yourself by scanning a marker (via `BarcodeDetector` where the
   browser supports it) or by typing its code.
-- **Manual location.** Press **I’m here** in the bottom bar, then search for a place by name or tap a room or
+- **Manual location.** On a desktop press **I’m here** in the bottom bar (phones use the camera button instead), then search for a place by name or tap a room or
   location on the map to set where you are, without the camera.
-- **AR view.** The camera passthrough shows a floor-projected arrow towards the next waypoint. It uses the
+- **AR view.** (Phones and tablets only; the camera locate button and AR are hidden on a desktop.) The camera passthrough shows a floor-projected arrow towards the next waypoint. It uses the
   compass (`DeviceOrientationEvent`, including the iOS 13+ permission prompt).
 - **Step tracking (PDR).** Accelerometer step detection moves your dot along the route between scans.
 - **Offline PWA.** The app shell and sample map are precached. The AI model (~7.5 MB) is downloaded the

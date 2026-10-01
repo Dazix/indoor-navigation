@@ -15,7 +15,6 @@ interface ARCanvasProps {
   orientation: OrientationState;
   steps: number;
   onEnableSensors: () => void;
-  onBack: () => void;
 }
 
 /**
@@ -71,7 +70,6 @@ export default function ARCanvas({
   orientation,
   steps,
   onEnableSensors,
-  onBack,
 }: ARCanvasProps) {
   const { videoRef, status, retry } = useCamera(true);
   const { heading, absolute, permission } = orientation;
@@ -112,7 +110,6 @@ export default function ARCanvas({
         sensorPermission={permission}
         steps={steps}
         onEnableSensors={onEnableSensors}
-        onBack={onBack}
       />
     </div>
   );
