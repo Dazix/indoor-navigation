@@ -1,5 +1,6 @@
 import { DoorOpen, MapPin, Search, X } from 'lucide-react';
-import { useId, useState, type KeyboardEvent } from 'react';
+import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
+import { isTypingTarget } from '../../services/editorShortcuts';
 import { searchPlaces } from '../../services/placeSearch';
 import type { MapData } from '../../types/map';
 
@@ -16,6 +17,7 @@ export function LocationSearch({ map, placeholder, onPick, className = '' }: Loc
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
+  const inputRef = useRef<HTMLInputElement>(null);
   const results = searchPlaces(map, query);
   const expanded = open && query.trim() !== '';
 
@@ -24,6 +26,27 @@ export function LocationSearch({ map, placeholder, onPick, className = '' }: Loc
     setQuery('');
     setOpen(false);
   };
+
+  // "/" jumps to the field from anywhere that is not already a text field.
+  useEffect(() => {
+    const onKey = (e: globalThis.KeyboardEvent) => {
+      if (
+        e.key !== '/' ||
+        e.ctrlKey ||
+        e.metaKey ||
+        e.altKey ||
+        isTypingTarget(e.target as HTMLElement | null)
+      ) {
+        return;
+      }
+      e.preventDefault();
+      inputRef.current?.focus();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+    };
+  }, []);
 
   const onKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
@@ -38,6 +61,12 @@ export function LocationSearch({ map, placeholder, onPick, className = '' }: Loc
         e.preventDefault();
         pick(match.nodeId);
       }
+    } else if (e.key === 'Tab' && !e.shiftKey) {
+      const first = results[0];
+      if (expanded && first) {
+        e.preventDefault();
+        pick(first.nodeId);
+      }
     } else if (e.key === 'Escape') {
       if (query) setQuery('');
       else e.currentTarget.blur();
@@ -49,8 +78,10 @@ export function LocationSearch({ map, placeholder, onPick, className = '' }: Loc
     <div className={`relative ${className}`}>
       <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-slate-400" />
       <input
+        ref={inputRef}
         type="search"
         role="combobox"
+        aria-keyshortcuts="/"
         aria-expanded={expanded}
         aria-controls={listId}
         aria-autocomplete="list"
@@ -72,6 +103,11 @@ export function LocationSearch({ map, placeholder, onPick, className = '' }: Loc
         onKeyDown={onKeyDown}
         className="w-full rounded-xl border border-slate-300 bg-white py-2 pr-8 pl-9 text-sm shadow-sm outline-none placeholder:text-slate-400 focus:border-brand-500 dark:border-slate-700 dark:bg-slate-800 [&::-webkit-search-cancel-button]:hidden"
       />
+      {!query && (
+        <kbd className="pointer-events-none absolute top-1/2 right-2 hidden -translate-y-1/2 rounded-md bg-slate-100 px-1.5 py-0.5 font-sans text-[11px] font-semibold text-slate-500 md:block dark:bg-slate-900 dark:text-slate-400">
+          /
+        </kbd>
+      )}
       {query && (
         <button
           type="button"

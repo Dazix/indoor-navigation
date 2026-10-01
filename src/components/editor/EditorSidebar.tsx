@@ -75,34 +75,39 @@ interface EditorSidebarProps {
   onClearMeasure: () => void;
 }
 
-const TOOLS: { id: EditorTool; label: string; icon: ReactNode; hint: string }[] = [
+const TOOLS: { id: EditorTool; label: string; key: string; icon: ReactNode; hint: string }[] = [
   {
     id: 'select',
     label: 'Select',
+    key: 'S',
     icon: <MousePointer2 className="size-4" />,
     hint: 'Tap a location to edit it, drag to move it. Tap or drag a corridor to add a bend point.',
   },
   {
     id: 'add_node',
     label: 'Add',
+    key: 'A',
     icon: <Plus className="size-4" />,
     hint: 'Tap the floor plan to place a new location. Tap a corridor to add an unnamed bend point.',
   },
   {
     id: 'link_nodes',
     label: 'Connect',
+    key: 'C',
     icon: <Link2 className="size-4" />,
     hint: 'Tap two locations to add or remove a walkable corridor.',
   },
   {
     id: 'delete',
     label: 'Delete',
+    key: 'D',
     icon: <Trash2 className="size-4" />,
     hint: 'Tap a location, a corridor or a bend point to delete it.',
   },
   {
     id: 'measure',
     label: 'Measure',
+    key: 'M',
     icon: <Ruler className="size-4" />,
     hint: 'Tap both ends of a wall or anything else you know the real length of. Zoom in for precision.',
   },
@@ -181,6 +186,8 @@ export function EditorSidebar(props: EditorSidebarProps) {
               key={t.id}
               type="button"
               aria-pressed={tool === t.id}
+              aria-keyshortcuts={t.key}
+              title={`${t.label} (${t.key})`}
               onClick={() => {
                 onToolChange(t.id);
               }}
@@ -191,7 +198,10 @@ export function EditorSidebar(props: EditorSidebarProps) {
               }`}
             >
               {t.icon}
-              {t.label}
+              <span>
+                <u className="no-underline md:underline md:underline-offset-2">{t.label.charAt(0)}</u>
+                {t.label.slice(1)}
+              </span>
             </button>
           ))}
         </div>
