@@ -1,4 +1,5 @@
 /// <reference types="vitest/config" />
+import { execFileSync } from 'node:child_process';
 import basicSsl from '@vitejs/plugin-basic-ssl';
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
@@ -9,8 +10,27 @@ import { VitePWA } from 'vite-plugin-pwa';
 const repoName = process.env.GITHUB_REPOSITORY?.split('/')[1] ?? 'indoor-navigation';
 const base = process.env.GITHUB_PAGES ? `/${repoName}/` : '/';
 
+function git(...args: string[]): string | null {
+  try {
+    return execFileSync('git', args, { stdio: ['ignore', 'pipe', 'ignore'] })
+      .toString()
+      .trim();
+  } catch {
+    return null;
+  }
+}
+
+// The version comes from the latest release tag (created by semantic-release), not package.json.
+const appVersion = git('describe', '--tags', '--always') ?? 'dev';
+const appCommit = process.env.GITHUB_SHA ?? git('rev-parse', 'HEAD') ?? 'unknown';
+
 export default defineConfig(({ mode }) => ({
   base,
+  define: {
+    __APP_VERSION__: JSON.stringify(appVersion),
+    __APP_COMMIT__: JSON.stringify(appCommit),
+    __APP_BUILD_TIME__: JSON.stringify(new Date().toISOString()),
+  },
   plugins: [
     react(),
     tailwindcss(),
@@ -38,6 +58,8 @@ export default defineConfig(({ mode }) => ({
         ],
       },
       workbox: {
+        // Prefixes the precache name, so the version modal can tell which build the service worker holds.
+        cacheId: `indoor-nav-${appVersion}`,
         // App shell, TF.js chunk, default map and floor plan are precached.
         globPatterns: ['**/*.{js,css,html,svg,png,ico,json}'],
         globIgnores: ['models/**'],

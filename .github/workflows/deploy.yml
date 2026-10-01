@@ -5,10 +5,9 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# Least privilege by default; jobs that need more declare it themselves.
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 # One deployment at a time; a newer push waits instead of cancelling a running deploy.
 concurrency:
@@ -40,9 +39,15 @@ jobs:
   build:
     needs: test
     runs-on: ubuntu-latest
+    permissions:
+      # semantic-release pushes the version tag and creates the GitHub Release.
+      contents: write
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          # semantic-release and `git describe` (app version) need the full history and tags.
+          fetch-depth: 0
 
       - name: Setup Node.js
         uses: actions/setup-node@v7
@@ -52,6 +57,13 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      # Tags and publishes a GitHub Release from conventional commits. Runs before the build so the
+      # new tag ends up in the app version.
+      - name: Release
+        run: npx semantic-release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Type check and build
         run: npm run build
@@ -69,6 +81,9 @@ jobs:
   deploy:
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
