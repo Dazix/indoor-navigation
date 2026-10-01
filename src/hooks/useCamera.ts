@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { useLocalStorage } from './useLocalStorage';
 
 export type CameraStatus = 'idle' | 'starting' | 'ready' | 'denied' | 'unavailable' | 'insecure';
@@ -51,6 +51,14 @@ export const CAMERA_STATUS_TEXT: Record<CameraStatus, string> = {
   insecure: 'Camera requires HTTPS. Open the app over a secure connection.',
 };
 
+const subscribeVisibility = (onChange: () => void) => {
+  document.addEventListener('visibilitychange', onChange);
+  return () => {
+    document.removeEventListener('visibilitychange', onChange);
+  };
+};
+const isPageVisible = () => document.visibilityState === 'visible';
+
 function precheck(active: boolean): CameraStatus | null {
   if (!active) return 'idle';
   if (!window.isSecureContext) return 'insecure';
@@ -89,7 +97,7 @@ async function initialZoom(track: MediaStreamTrack | null): Promise<CameraZoom |
 /**
  * Manages the camera stream for a <video> element while `active` is true (rear camera by default).
  * The user's lens choice is remembered across sessions. Tracks are stopped when the hook
- * deactivates or unmounts.
+ * deactivates, unmounts or the page is hidden.
  */
 export function useCamera(active: boolean, constraints: MediaTrackConstraints = DEFAULT_CONSTRAINTS) {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -105,7 +113,9 @@ export function useCamera(active: boolean, constraints: MediaTrackConstraints = 
   const [zoom, setZoomState] = useState<CameraZoom | null>(null);
   const trackRef = useRef<MediaStreamTrack | null>(null);
   const constraintsRef = useRef(constraints);
-  const blocked = precheck(active);
+  // A hidden page (minimized browser, other tab) releases the camera and reopens it on return.
+  const pageVisible = useSyncExternalStore(subscribeVisibility, isPageVisible, () => true);
+  const blocked = precheck(active && pageVisible);
 
   useEffect(() => {
     if (blocked) return;

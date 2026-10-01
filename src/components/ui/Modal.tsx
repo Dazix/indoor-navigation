@@ -13,6 +13,8 @@ interface ModalProps {
   size?: 'md' | 'lg';
   /** Dark chrome for camera views. */
   tone?: 'default' | 'dark';
+  /** Fixed panel height instead of sizing to the content, for views whose content changes live. */
+  fullHeight?: boolean;
   children: ReactNode;
 }
 
@@ -29,6 +31,7 @@ export function Modal({
   footer,
   size = 'md',
   tone = 'default',
+  fullHeight = false,
   children,
 }: ModalProps) {
   const titleId = useId();
@@ -58,6 +61,9 @@ export function Modal({
   if (!open) return null;
 
   const dark = tone === 'dark';
+  const panelHeight = fullHeight
+    ? 'h-[calc(100dvh-env(safe-area-inset-top)-0.5rem)] sm:h-[92dvh] sm:max-h-[48rem]'
+    : 'max-h-[calc(100dvh-env(safe-area-inset-top)-0.5rem)] sm:max-h-[92dvh]';
   const panelTone = dark
     ? 'dark border-slate-700 bg-slate-900 text-white'
     : 'border-slate-200 bg-white text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-white';
@@ -75,7 +81,7 @@ export function Modal({
         aria-modal="true"
         aria-labelledby={titleId}
         tabIndex={-1}
-        className={`relative flex max-h-[calc(100dvh-env(safe-area-inset-top)-0.5rem)] w-full flex-col overflow-hidden rounded-t-3xl border shadow-2xl outline-none sm:max-h-[92dvh] sm:rounded-3xl ${size === 'lg' ? 'sm:max-w-lg' : 'sm:max-w-md'} ${panelTone}`}
+        className={`relative flex ${panelHeight} w-full flex-col overflow-hidden rounded-t-3xl border shadow-2xl outline-none sm:rounded-3xl ${size === 'lg' ? 'sm:max-w-lg' : 'sm:max-w-md'} ${panelTone}`}
       >
         <header className="flex items-center justify-between gap-3 border-b border-slate-200 px-4 py-3 dark:border-slate-800">
           <div className="min-w-0">

@@ -240,9 +240,39 @@ export default function VisionScannerModal({
     </div>
   );
 
+  const manualPicker = (
+    <label className="flex w-full items-center justify-between gap-3 text-xs text-slate-400">
+      <span className="shrink-0">Or pick your location</span>
+      <select
+        value=""
+        onChange={(e) => {
+          if (e.target.value) pickManually(e.target.value);
+        }}
+        className="min-w-0 flex-1 rounded-lg border border-slate-700 bg-slate-800 px-2 py-1.5 text-xs text-white"
+      >
+        <option value="">Choose…</option>
+        {Object.values(map.nodes)
+          .sort((a, b) => a.label.localeCompare(b.label))
+          .map((n) => (
+            <option key={n.id} value={n.id}>
+              {n.label}
+            </option>
+          ))}
+      </select>
+    </label>
+  );
+
   return (
-    <Modal open onClose={onClose} title="Where am I?" tone="dark" headerExtra={tabs}>
-      <div className="relative flex h-[55dvh] w-full items-center justify-center overflow-hidden bg-black">
+    <Modal
+      open
+      onClose={onClose}
+      title="Where am I?"
+      tone="dark"
+      headerExtra={tabs}
+      fullHeight
+      footer={manualPicker}
+    >
+      <div className="sticky top-0 z-10 flex h-[clamp(11rem,32dvh,20rem)] w-full items-center justify-center overflow-hidden bg-black">
         <video ref={videoRef} autoPlay playsInline muted className="size-full object-contain" />
         <CameraControls
           devices={devices}
@@ -280,7 +310,7 @@ export default function VisionScannerModal({
                 </>
               )}
             </span>
-            <div className="grid h-2/3 w-2/3 grid-cols-3 grid-rows-3 self-center rounded-2xl border border-cyan-400/50 bg-cyan-500/5">
+            <div className="grid aspect-[224/298] h-3/4 grid-cols-3 grid-rows-3 self-center rounded-2xl border border-cyan-400/50 bg-cyan-500/5">
               {Array.from({ length: 9 }, (_, i) => (
                 <div key={i} className="border border-cyan-400/15" />
               ))}
@@ -361,26 +391,6 @@ export default function VisionScannerModal({
             </form>
           </section>
         )}
-
-        <label className="flex items-center justify-between gap-3 border-t border-slate-800 pt-3 text-xs text-slate-400">
-          <span>Or pick your location</span>
-          <select
-            value=""
-            onChange={(e) => {
-              if (e.target.value) pickManually(e.target.value);
-            }}
-            className="max-w-48 rounded-lg border border-slate-700 bg-slate-800 px-2 py-1.5 text-xs text-white"
-          >
-            <option value="">Choose…</option>
-            {Object.values(map.nodes)
-              .sort((a, b) => a.label.localeCompare(b.label))
-              .map((n) => (
-                <option key={n.id} value={n.id}>
-                  {n.label}
-                </option>
-              ))}
-          </select>
-        </label>
       </div>
     </Modal>
   );
