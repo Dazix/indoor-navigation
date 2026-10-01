@@ -55,6 +55,8 @@ interface InteractiveMapProps {
   focus?: { point: Point; seq: number } | null;
   /** Ends of the line drawn with the measure tool (0–2 points). */
   measureLine?: Point[];
+  /** The user is choosing where they are: every location is marked as tappable. */
+  pickingLocation?: boolean;
 }
 
 /** Hovered spot on a corridor where a click would add a bend. */
@@ -179,6 +181,7 @@ export function InteractiveMap({
   onBendTap,
   focus,
   measureLine,
+  pickingLocation = false,
 }: InteractiveMapProps) {
   const svgRef = useRef<SVGSVGElement>(null);
   const gesture = useRef<Gesture | null>(null);
@@ -467,9 +470,11 @@ export function InteractiveMap({
           viewBox={`${vb.x} ${vb.y} ${vb.w} ${vb.h}`}
           role="img"
           aria-label={`Floor plan: ${map.metadata.name}`}
-          className={`size-full touch-none rounded-2xl border border-slate-300/80 bg-white shadow-inner dark:border-slate-700 dark:bg-slate-900 ${
-            isEditor && (tool === 'add_node' || tool === 'measure') ? 'cursor-crosshair' : ''
-          }`}
+          className={`size-full touch-none rounded-2xl border bg-white shadow-inner dark:bg-slate-900 ${
+            pickingLocation
+              ? 'border-brand-500 ring-4 ring-brand-500/25 ring-inset dark:border-brand-400'
+              : 'border-slate-300/80 dark:border-slate-700'
+          } ${isEditor && (tool === 'add_node' || tool === 'measure') ? 'cursor-crosshair' : ''}`}
           onClick={handleCanvasClick}
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
@@ -675,6 +680,18 @@ export function InteractiveMap({
               >
                 {/* Invisible larger hit area for fingers. */}
                 <circle cx={node.x} cy={node.y} r={4 * s} fill="transparent" />
+                {pickingLocation && !isEditor && (
+                  <circle
+                    cx={node.x}
+                    cy={node.y}
+                    r={3.6 * s}
+                    fill="none"
+                    stroke="#6366f1"
+                    strokeWidth={0.7 * s}
+                    pointerEvents="none"
+                    className="origin-center [transform-box:fill-box] motion-safe:animate-pick-pulse"
+                  />
+                )}
                 {isSelected && (
                   <circle
                     cx={node.x}
