@@ -68,6 +68,8 @@ interface EditorSidebarProps {
   mapSourceUrl?: string;
   /** A location picked in the search field. */
   onFindNode: (nodeId: string) => void;
+  /** Id of the active map, the key of the recent searches. */
+  mapId: string | null;
   /** Ends of the line drawn with the measure tool (0–2 points). */
   measureLine: Point[];
   /** Sets the scale so the measured line is `meters` long. */
@@ -157,7 +159,12 @@ export function EditorSidebar(props: EditorSidebarProps) {
   return (
     <aside className="z-10 flex max-h-[45dvh] w-full shrink-0 flex-col gap-4 overflow-x-hidden overflow-y-auto border-b border-slate-200 bg-white p-4 shadow-lg md:max-h-none md:w-80 md:border-r md:border-b-0 dark:border-slate-800 dark:bg-slate-900">
       {Object.keys(map.nodes).length > 0 && (
-        <LocationSearch map={map} placeholder="Find a location" onPick={props.onFindNode} />
+        <LocationSearch
+          map={map}
+          mapId={props.mapId}
+          placeholder="Find a location"
+          onPick={props.onFindNode}
+        />
       )}
 
       <section>

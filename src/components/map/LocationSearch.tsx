@@ -1,27 +1,38 @@
-import { DoorOpen, MapPin, Search, X } from 'lucide-react';
+import { Clock, DoorOpen, MapPin, Search, X } from 'lucide-react';
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
 import { isTypingTarget } from '../../services/editorShortcuts';
-import { searchPlaces } from '../../services/placeSearch';
+import { searchPlaces, type PlaceMatch } from '../../services/placeSearch';
+import { addRecent, loadRecent, resolveRecent, saveRecent } from '../../services/recentPlaces';
 import type { MapData } from '../../types/map';
 
 interface LocationSearchProps {
   map: MapData;
+  /** Id of the map; the last places picked on it are offered when the empty field gets focus. */
+  mapId: string | null;
   placeholder: string;
   onPick: (nodeId: string) => void;
   className?: string;
 }
 
 /** Search field over location and room names with a keyboard-navigable result list. */
-export function LocationSearch({ map, placeholder, onPick, className = '' }: LocationSearchProps) {
+export function LocationSearch({ map, mapId, placeholder, onPick, className = '' }: LocationSearchProps) {
   const listId = useId();
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
+  const [recent, setRecent] = useState<PlaceMatch[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
+  const searching = query.trim() !== '';
   const results = searchPlaces(map, query);
-  const expanded = open && query.trim() !== '';
+  const items = searching ? results : recent;
+  const expanded = open && (searching || recent.length > 0);
 
   const pick = (nodeId: string) => {
+    if (mapId) {
+      const ids = addRecent(loadRecent(mapId), nodeId);
+      saveRecent(mapId, ids);
+      setRecent(resolveRecent(map, ids));
+    }
     onPick(nodeId);
     setQuery('');
     setOpen(false);
@@ -52,11 +63,13 @@ export function LocationSearch({ map, placeholder, onPick, className = '' }: Loc
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
       e.preventDefault();
       setOpen(true);
-      if (results.length === 0) return;
+      if (items.length === 0) return;
       const step = e.key === 'ArrowDown' ? 1 : -1;
-      setActive((i) => (i + step + results.length) % results.length);
+      setActive((i) => (i + step + items.length) % items.length);
     } else if (e.key === 'Enter') {
-      const match = results[Math.min(active, results.length - 1)];
+      // An empty field only has something to pick while its recent list is showing.
+      const list = searching || expanded ? items : [];
+      const match = list[Math.min(active, list.length - 1)];
       if (match) {
         e.preventDefault();
         pick(match.nodeId);
@@ -85,7 +98,7 @@ export function LocationSearch({ map, placeholder, onPick, className = '' }: Loc
         aria-expanded={expanded}
         aria-controls={listId}
         aria-autocomplete="list"
-        aria-activedescendant={expanded && results[active] ? `${listId}-${String(active)}` : undefined}
+        aria-activedescendant={expanded && items[active] ? `${listId}-${String(active)}` : undefined}
         aria-label={placeholder}
         placeholder={placeholder}
         value={query}
@@ -95,6 +108,8 @@ export function LocationSearch({ map, placeholder, onPick, className = '' }: Loc
           setOpen(true);
         }}
         onFocus={() => {
+          setRecent(mapId ? resolveRecent(map, loadRecent(mapId)) : []);
+          setActive(0);
           setOpen(true);
         }}
         onBlur={() => {
@@ -129,10 +144,18 @@ export function LocationSearch({ map, placeholder, onPick, className = '' }: Loc
           role="listbox"
           className="absolute inset-x-0 top-full z-20 mt-1 max-h-72 overflow-y-auto rounded-xl border border-slate-200 bg-white py-1 shadow-xl dark:border-slate-700 dark:bg-slate-900"
         >
-          {results.length === 0 ? (
+          {!searching && (
+            <li
+              role="presentation"
+              className="px-3 pt-1.5 pb-1 text-[10px] font-bold tracking-wider text-slate-400 uppercase"
+            >
+              Recent
+            </li>
+          )}
+          {items.length === 0 ? (
             <li className="px-3 py-2 text-xs text-slate-500">No location matches “{query.trim()}”.</li>
           ) : (
-            results.map((m, i) => (
+            items.map((m, i) => (
               <li
                 key={m.nodeId}
                 id={`${listId}-${String(i)}`}
@@ -149,7 +172,9 @@ export function LocationSearch({ map, placeholder, onPick, className = '' }: Loc
                   i === active ? 'bg-brand-50 dark:bg-brand-900/30' : ''
                 }`}
               >
-                {m.kind === 'room' ? (
+                {!searching ? (
+                  <Clock className="size-4 shrink-0 text-slate-400" />
+                ) : m.kind === 'room' ? (
                   <DoorOpen className="size-4 shrink-0 text-slate-400" />
                 ) : (
                   <MapPin className="size-4 shrink-0 text-slate-400" />

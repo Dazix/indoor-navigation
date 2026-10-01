@@ -12,12 +12,15 @@ Firebase project (see [Cloud sync](#cloud-sync-optional-firebase-backend)).
 - **Multiple maps.** Keep several offices or floors side by side and switch between them from the header.
   You can create, duplicate, rename, delete and import maps.
 - **2D navigation.** Tap a room or location to get the shortest walkable route (A\* over the corridor graph),
-  with real distances in meters.
+  with real distances in meters. You can also search for a place by name; focusing the empty search field
+  lists the last 5 places you picked on that map.
 - **Markerless visual localization.** Walk through a place once in the Editor and the app records camera
   keyframes as MobileNet v2 embeddings. The scanner then recognizes where you are by cosine similarity (k-NN)
   against those views. Everything runs on the device with TensorFlow.js.
 - **QR / code markers.** You can also locate yourself by scanning a marker (via `BarcodeDetector` where the
   browser supports it) or by typing its code.
+- **Manual location.** Press **I’m here** in the bottom bar, then search for a place by name or tap a room or
+  location on the map to set where you are, without the camera.
 - **AR view.** The camera passthrough shows a floor-projected arrow towards the next waypoint. It uses the
   compass (`DeviceOrientationEvent`, including the iOS 13+ permission prompt).
 - **Step tracking (PDR).** Accelerometer step detection moves your dot along the route between scans.

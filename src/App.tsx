@@ -1,4 +1,4 @@
-import { Loader2, Target, X } from 'lucide-react';
+import { Loader2, MapPin, Target, X } from 'lucide-react';
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { EditorSidebar } from './components/editor/EditorSidebar';
 import { Header } from './components/layout/Header';
@@ -140,8 +140,11 @@ export default function App() {
   // Last location the user confirmed, in memory only: it gives the scanner a fading hint which
   // places are likely, and is gone after a restart, when the user may be anywhere.
   const [lastFix, setLastFix] = useState<LocationFix | null>(null);
+  // The user is choosing where they are, by search or by tapping the map.
+  const [pickingLocation, setPickingLocation] = useState(false);
   if (map && nav.mapId !== activeMapId) {
     setLastFix(null);
+    setPickingLocation(false);
     setNav({ mapId: activeMapId, from: defaultStart(map), to: null });
     setSelectedNodeId(null);
     setLinkFromId(null);
@@ -193,6 +196,18 @@ export default function App() {
       window.removeEventListener('hashchange', syncFromUrl);
     };
   }, []);
+
+  const picking = pickingLocation && mode === 'user';
+  useEffect(() => {
+    if (!picking) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setPickingLocation(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [picking]);
 
   const sensorsEnabled = mode !== 'editor';
   const orientation = useOrientation(sensorsEnabled);
@@ -422,9 +437,21 @@ export default function App() {
     }
   };
 
+  /** A place picked in the user view: where the user is while choosing a location, else the destination. */
+  const handleUserPick = (id: string) => {
+    if (picking) {
+      relocate(id);
+      setPickingLocation(false);
+      const label = map?.nodes[id]?.label;
+      if (label) setNotice({ tone: 'info', text: `You are at ${label}` });
+    } else {
+      navigateTo(id);
+    }
+  };
+
   const handleNodeTap = (id: string) => {
     if (mode !== 'editor') {
-      navigateTo(id);
+      handleUserPick(id);
       return;
     }
     if (tool === 'measure') {
@@ -666,6 +693,7 @@ export default function App() {
               setMeasure([]);
             }}
             mapSourceUrl={library.maps.find((m) => m.id === activeMapId)?.sourceUrl}
+            mapId={activeMapId}
             onFindNode={(id) => {
               const node = map.nodes[id];
               if (!node) return;
@@ -703,12 +731,13 @@ export default function App() {
               tool={tool}
               selectedNodeId={mode === 'editor' ? (linkFromId ?? selectedNodeId) : null}
               onNodeTap={handleNodeTap}
-              onRoomTap={navigateTo}
+              onRoomTap={handleUserPick}
               onCanvasTap={handleCanvasTap}
               onNodeDrag={(id, point) => {
                 updateMap((m) => moveNode(m, id, point), `move:${id}`);
               }}
               focus={mode === 'editor' ? mapFocus : null}
+              pickingLocation={picking}
               measureLine={mode === 'editor' && tool === 'measure' ? measure : undefined}
               onBendInsert={(edgeIndex, segmentIndex, point) => {
                 updateMap((m) => insertBend(m, edgeIndex, segmentIndex, point));
@@ -725,7 +754,39 @@ export default function App() {
             />
           )}
 
-          {mode === 'user' && destinationNode && (
+          {picking && (
+            <div className="absolute inset-x-3 top-3 z-10 mx-auto max-w-md rounded-2xl border-2 border-brand-500 bg-white/95 p-3 shadow-xl ring-4 ring-brand-500/20 backdrop-blur-md motion-safe:animate-panel-in dark:bg-slate-900/95">
+              <div className="mb-2 flex items-center gap-3">
+                <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-brand-600 text-white">
+                  <MapPin className="size-5" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-bold text-slate-900 dark:text-white">Where are you?</p>
+                  <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
+                    Search below or tap a place on the map.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  aria-label="Cancel choosing location"
+                  onClick={() => {
+                    setPickingLocation(false);
+                  }}
+                  className="rounded-lg p-1.5 text-slate-400 hover:text-slate-700 dark:hover:text-white"
+                >
+                  <X className="size-4.5" />
+                </button>
+              </div>
+              <LocationSearch
+                map={map}
+                mapId={activeMapId}
+                placeholder="Where are you now?"
+                onPick={handleUserPick}
+              />
+            </div>
+          )}
+
+          {mode === 'user' && !picking && destinationNode && (
             <div className="absolute inset-x-3 top-3 z-10 mx-auto flex max-w-md items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white/95 p-3 shadow-xl backdrop-blur-md dark:border-slate-700 dark:bg-slate-900/95">
               <div className="flex min-w-0 items-center gap-3">
                 <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-brand-50 text-brand-600 dark:bg-brand-900/40 dark:text-brand-300">
@@ -737,7 +798,7 @@ export default function App() {
                     {destinationNode.label}
                   </p>
                   {!currentLocation && (
-                    <p className="text-[11px] text-amber-600">Scan to set your location</p>
+                    <p className="text-[11px] text-amber-600">Scan or tap “I’m here” to set your location</p>
                   )}
                 </div>
               </div>
@@ -759,9 +820,14 @@ export default function App() {
             </div>
           )}
 
-          {mode === 'user' && !destinationNode && Object.keys(map.nodes).length > 0 && (
+          {mode === 'user' && !picking && !destinationNode && Object.keys(map.nodes).length > 0 && (
             <div className="absolute inset-x-3 top-3 z-10 mx-auto max-w-md rounded-2xl bg-white/90 p-2 shadow-lg backdrop-blur-md dark:bg-slate-900/90">
-              <LocationSearch map={map} placeholder="Where do you want to go?" onPick={navigateTo} />
+              <LocationSearch
+                map={map}
+                mapId={activeMapId}
+                placeholder="Where do you want to go?"
+                onPick={navigateTo}
+              />
               <p className="mt-1.5 text-center text-[11px] font-medium text-slate-500 dark:text-slate-400">
                 Or tap a room or location on the map.
               </p>
@@ -799,6 +865,11 @@ export default function App() {
           onModeChange={changeMode}
           onScan={() => {
             setScannerOpen(true);
+          }}
+          locating={picking}
+          canSetLocation={Object.keys(map.nodes).length > 0}
+          onSetLocation={() => {
+            setPickingLocation((p) => !p);
           }}
         />
       )}
