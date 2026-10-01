@@ -93,6 +93,26 @@ describe('parseMapData', () => {
     expect(parseMapData(withViews([{ ...view, tiles: [['x']] }])).ok).toBe(false);
   });
 
+  it('keeps the optional stored frame of a learned view and rejects a non-image one', () => {
+    const view = { id: 'v1', thumbnail: 'data:image/jpeg;base64,AA', vector: [1], timestamp: 1 };
+    const withViews = (views: unknown[]) => {
+      const map = clone();
+      const nodes = map.nodes as Record<string, Record<string, unknown>>;
+      (nodes.hub as Record<string, unknown>).embeddings = views;
+      return map;
+    };
+
+    const ok = parseMapData(withViews([{ ...view, frame: 'data:image/jpeg;base64,BB' }, view]));
+    expect(ok.ok).toBe(true);
+    if (ok.ok) {
+      expect(ok.data.nodes.hub?.embeddings.map((s) => s.frame)).toEqual([
+        'data:image/jpeg;base64,BB',
+        undefined,
+      ]);
+    }
+    expect(parseMapData(withViews([{ ...view, frame: 'https://example.com/a.jpg' }])).ok).toBe(false);
+  });
+
   it('rejects nodes outside the map size', () => {
     const map = clone();
     map.metadata = { ...(map.metadata as object), width: 100, height: 10 };

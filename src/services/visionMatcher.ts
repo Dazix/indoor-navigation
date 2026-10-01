@@ -322,8 +322,14 @@ export function extractFallbackEmbedding(source: PixelSource): number[] {
  * so vectors do not depend on the native aspect ratio of the phone's camera.
  */
 export const FRAME_ASPECT = 3 / 4;
-const FRAME_WIDTH = 336;
-const FRAME_HEIGHT = 448;
+/**
+ * Size every frame is reduced to before embedding. It is also the size of the frame stored with a
+ * learned view, so the vectors can be recomputed later (other model) from exactly what was embedded.
+ */
+export const FRAME_WIDTH = 224;
+export const FRAME_HEIGHT = 298;
+/** JPEG quality of the stored frame; a view is then about 15 kB. */
+const STORED_FRAME_QUALITY = 0.8;
 
 /** Largest centred rectangle of `aspect` (width / height) that fits into a `width` × `height` frame. */
 export function centerCropRect(width: number, height: number, aspect = FRAME_ASPECT) {
@@ -366,6 +372,32 @@ export function splitIntoTiles(frame: PixelSource): PixelSource[] {
     canvas.height = height;
     canvas.getContext('2d')?.drawImage(frame, t * tileWidth, 0, tileWidth, height, 0, 0, tileWidth, height);
     return canvas;
+  });
+}
+
+/**
+ * The frame that is embedded and stored for a learned view, as a JPEG data URL. Embedding this very
+ * image (see `loadImage`) reproduces the stored vectors, so a view can be re-embedded by another model.
+ */
+export function captureFrame(source: PixelSource): string {
+  const canvas = document.createElement('canvas');
+  canvas.width = FRAME_WIDTH;
+  canvas.height = FRAME_HEIGHT;
+  canvas.getContext('2d')?.drawImage(cropToFrameAspect(source), 0, 0, FRAME_WIDTH, FRAME_HEIGHT);
+  return canvas.toDataURL('image/jpeg', STORED_FRAME_QUALITY);
+}
+
+/** Decodes an image data URL, e.g. a stored frame. */
+export function loadImage(src: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => {
+      resolve(image);
+    };
+    image.onerror = () => {
+      reject(new Error('The stored image could not be decoded'));
+    };
+    image.src = src;
   });
 }
 

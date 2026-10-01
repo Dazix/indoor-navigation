@@ -11,7 +11,7 @@ import {
   MIN_VIEWS,
   type CoverageLevel,
 } from '../../services/coverage';
-import { captureThumbnail, isFrameReady } from '../../services/visionMatcher';
+import { captureFrame, captureThumbnail, isFrameReady } from '../../services/visionMatcher';
 import type { MapNode } from '../../types/map';
 import type { EmbeddingSample } from '../../types/vision';
 import { Button } from '../ui/Button';
@@ -54,7 +54,7 @@ export default function WalkthroughModal({ node, onClose, onSave }: WalkthroughM
     zoom,
     setZoom,
   } = useCamera(true, WIDE_CONSTRAINTS);
-  const { status: modelStatus, engine, load, embed } = useTensorFlow();
+  const { status: modelStatus, engine, load, embedStored } = useTensorFlow();
   const orientation = useOrientation();
   const busy = useRef(false);
   // Read inside the capture timer, which must not restart whenever the compass moves.
@@ -84,16 +84,18 @@ export default function WalkthroughModal({ node, onClose, onSave }: WalkthroughM
     try {
       const thumbnail = captureThumbnail(video);
       const headingDeg = headingRef.current === null ? undefined : Math.round(headingRef.current) % 360;
-      const { vector, tiles } = await embed(video);
+      // Embedding the stored JPEG itself lets a later model switch reproduce exactly these inputs.
+      const frame = captureFrame(video);
+      const { vector, tiles } = await embedStored(frame);
       setSamples((prev) =>
         prev.length >= MAX_SAMPLES
           ? prev
-          : [...prev, { id: sampleId(), thumbnail, vector, tiles, timestamp: Date.now(), headingDeg }],
+          : [...prev, { id: sampleId(), thumbnail, frame, vector, tiles, timestamp: Date.now(), headingDeg }],
       );
     } finally {
       busy.current = false;
     }
-  }, [embed, videoRef]);
+  }, [embedStored, videoRef]);
 
   useEffect(() => {
     if (!recording) return;

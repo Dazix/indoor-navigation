@@ -10,6 +10,7 @@ const coordinate = z.number().min(0).max(100);
 const EmbeddingSampleSchema = z.object({
   id: z.string().min(1),
   thumbnail: z.string().startsWith('data:image/'),
+  frame: z.string().startsWith('data:image/').optional(),
   vector: z.array(z.number()).min(1).max(4096),
   timestamp: z.number(),
   headingDeg: z.number().min(0).max(360).optional(),

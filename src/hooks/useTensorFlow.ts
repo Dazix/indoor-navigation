@@ -5,6 +5,7 @@ import {
   cropToFrameAspect,
   EMBEDDING_SIZE,
   extractFallbackEmbedding,
+  loadImage,
   splitIntoTiles,
   TILE_EMBEDDING_SIZE,
 } from '../services/visionMatcher';
@@ -108,6 +109,11 @@ export async function embedFrame(rawSource: PixelSource): Promise<Embedding> {
   return { ...whole, tiles };
 }
 
+/** Embeds a stored frame (see `captureFrame`), the same way a live frame is embedded. */
+export async function embedStoredFrame(dataUrl: string): Promise<Embedding> {
+  return embedFrame(await loadImage(dataUrl));
+}
+
 /** Number of live tensors; exposed for leak checks during development. */
 export function liveTensorCount(): number | null {
   return loaded?.tf.memory().numTensors ?? null;
@@ -122,5 +128,5 @@ export function useTensorFlow() {
   const current = useSyncExternalStore(subscribe, () => status);
   const load = useCallback(() => loadMobileNet(), []);
   const engine: EmbeddingEngine = current === 'ready' ? 'mobilenet' : 'fallback';
-  return { status: current, engine, load, embed: embedFrame };
+  return { status: current, engine, load, embed: embedFrame, embedStored: embedStoredFrame };
 }
