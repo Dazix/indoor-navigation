@@ -44,15 +44,23 @@ export function fitView(size: MapSize): MapView {
   return { zoom: 1, cx: size.width / 2, cy: size.height / 2 };
 }
 
-/** Keeps the zoom in range and the visible area inside the map. */
-export function clampView(view: MapView, size: MapSize): MapView {
+/**
+ * Share of the visible span the view may be dragged past the map edge, so content under an overlay
+ * (search panel, controls) can be pulled into the clear.
+ */
+export const PAN_SLACK = 0.3;
+
+/** Keeps the zoom in range and the visible area inside the map, give or take `slack` of the visible span. */
+export function clampView(view: MapView, size: MapSize, slack = 0): MapView {
   const zoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, view.zoom));
   const halfW = size.width / zoom / 2;
   const halfH = size.height / zoom / 2;
+  const slackW = halfW * 2 * slack;
+  const slackH = halfH * 2 * slack;
   return {
     zoom,
-    cx: Math.min(size.width - halfW, Math.max(halfW, view.cx)),
-    cy: Math.min(size.height - halfH, Math.max(halfH, view.cy)),
+    cx: Math.min(size.width - halfW + slackW, Math.max(halfW - slackW, view.cx)),
+    cy: Math.min(size.height - halfH + slackH, Math.max(halfH - slackH, view.cy)),
   };
 }
 
@@ -63,12 +71,13 @@ export function viewBoxOf(view: MapView, size: MapSize): ViewBox {
 }
 
 /** Zooms to `zoom` while the map point `anchor` stays at the same place on screen. */
-export function zoomAround(view: MapView, zoom: number, anchor: Point, size: MapSize): MapView {
+export function zoomAround(view: MapView, zoom: number, anchor: Point, size: MapSize, slack = 0): MapView {
   const next = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom));
   const k = view.zoom / next;
   return clampView(
     { zoom: next, cx: anchor.x - (anchor.x - view.cx) * k, cy: anchor.y - (anchor.y - view.cy) * k },
     size,
+    slack,
   );
 }
 

@@ -1,8 +1,7 @@
-import { ChevronDown, Layers, MapPinned, PencilRuler } from 'lucide-react';
+import { ChevronDown, Layers, MapPinned, Navigation, PencilRuler } from 'lucide-react';
 import type { ReactNode } from 'react';
 import type { MapSummary } from '../../types/map';
 import type { AppMode } from '../../types/navigation';
-import type { EmbeddingEngine, ModelStatus } from '../../types/vision';
 
 interface HeaderProps {
   mode: AppMode;
@@ -11,9 +10,7 @@ interface HeaderProps {
   activeMapId: string | null;
   onSwitchMap: (id: string) => void;
   onManageMaps: () => void;
-  engine: EmbeddingEngine;
-  modelStatus: ModelStatus;
-  /** Cloud sync status and actions, shown next to the title. */
+  /** Cloud sync status and actions, shown next to the manage maps button. */
   cloudSlot?: ReactNode;
   /** Local edits not yet in the cloud; shown as a dot on the Editor tab. */
   unsavedChanges?: boolean;
@@ -26,14 +23,10 @@ export function Header({
   activeMapId,
   onSwitchMap,
   onManageMaps,
-  engine,
-  modelStatus,
   cloudSlot,
   unsavedChanges = false,
 }: HeaderProps) {
   const sorted = [...maps].sort((a, b) => a.name.localeCompare(b.name));
-  const badge =
-    modelStatus === 'loading' ? 'Loading AI…' : engine === 'mobilenet' ? 'AI MobileNet' : 'Offline';
 
   return (
     <header className="pt-safe px-safe z-20 border-b border-slate-800 bg-slate-900 text-white">
@@ -43,13 +36,7 @@ export function Header({
             <MapPinned className="size-4.5" />
           </div>
           <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <h1 className="hidden text-sm leading-tight font-bold sm:block">Indoor Navigation</h1>
-              <span className="hidden rounded border border-brand-700/50 bg-brand-900/80 px-1.5 font-mono text-[9px] text-brand-300 md:inline">
-                {badge}
-              </span>
-              {cloudSlot}
-            </div>
+            <h1 className="hidden text-sm leading-tight font-bold sm:block">Indoor Navigation</h1>
             <div className="flex items-center">
               <label className="relative flex min-w-0 items-center">
                 <span className="sr-only">Active map</span>
@@ -58,7 +45,7 @@ export function Header({
                   onChange={(e) => {
                     onSwitchMap(e.target.value);
                   }}
-                  className="max-w-40 appearance-none truncate bg-transparent pr-5 text-xs font-semibold text-slate-200 outline-none sm:max-w-56 sm:text-[11px] sm:font-normal sm:text-slate-400"
+                  className="w-full min-w-0 max-w-24 appearance-none truncate bg-transparent pr-5 text-xs font-semibold text-slate-200 outline-none sm:max-w-44 sm:text-[11px] sm:font-normal sm:text-slate-400"
                 >
                   {sorted.map((m) => (
                     <option key={m.id} value={m.id} className="bg-slate-900 text-white">
@@ -73,10 +60,11 @@ export function Header({
                 onClick={onManageMaps}
                 aria-label="Manage maps"
                 title="Manage maps"
-                className="ml-1 rounded-md p-1 text-slate-400 hover:bg-white/10 hover:text-white"
+                className="ml-1 shrink-0 rounded-md p-1 text-slate-400 hover:bg-white/10 hover:text-white"
               >
                 <Layers className="size-3.5" />
               </button>
+              {cloudSlot && <div className="ml-1 shrink-0">{cloudSlot}</div>}
             </div>
           </div>
         </div>
@@ -92,11 +80,13 @@ export function Header({
             onClick={() => {
               onModeChange('user');
             }}
-            className={`rounded-lg px-2.5 py-1.5 text-xs font-semibold whitespace-nowrap transition-colors sm:px-3 ${
+            aria-label="Navigate"
+            className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold whitespace-nowrap transition-colors sm:px-3 ${
               mode !== 'editor' ? 'bg-brand-600 text-white shadow-md' : 'text-slate-400 hover:text-white'
             }`}
           >
-            Navigate
+            <Navigation className="size-3.5 sm:hidden" />
+            <span className="hidden sm:inline">Navigate</span>
           </button>
           <button
             type="button"
@@ -111,7 +101,7 @@ export function Header({
             }`}
           >
             <PencilRuler className="size-3.5" />
-            <span className="hidden min-[400px]:inline">Editor</span>
+            <span className="hidden sm:inline">Editor</span>
             {unsavedChanges && (
               <span
                 aria-hidden="true"

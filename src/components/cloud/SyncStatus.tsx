@@ -72,8 +72,8 @@ export function SyncStatus({ configured, status, dirty, busy, onPublish, onOpenS
           className="flex shrink-0 items-center gap-1 rounded-md bg-brand-600 px-2 py-0.5 text-[10px] font-bold whitespace-nowrap text-white hover:bg-brand-500 disabled:pointer-events-none disabled:opacity-50"
         >
           <CloudUpload className="size-3" />
-          <span className="min-[400px]:hidden">Sync</span>
-          <span className="hidden min-[400px]:inline">Sync to Cloud</span>
+          <span className="sm:hidden">Sync</span>
+          <span className="hidden sm:inline">Sync to Cloud</span>
         </button>
       )}
     </div>

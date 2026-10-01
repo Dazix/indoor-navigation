@@ -16,6 +16,7 @@ import type { Route } from '../../services/navigation';
 import { isTrained } from '../../services/visionMatcher';
 import {
   clampView,
+  PAN_SLACK,
   displaySize,
   fitView,
   MAX_ZOOM,
@@ -306,10 +307,13 @@ export function InteractiveMap({
       const current = viewRef.current;
       const factor = Math.exp(-e.deltaY * (e.ctrlKey ? 0.01 : 0.0015));
       setView(
-        zoomAround(current, current.zoom * factor, toLocalPoint(svg, e.clientX, e.clientY), {
-          width: canvasWidth,
-          height: canvasHeight,
-        }),
+        zoomAround(
+          current,
+          current.zoom * factor,
+          toLocalPoint(svg, e.clientX, e.clientY),
+          { width: canvasWidth, height: canvasHeight },
+          PAN_SLACK,
+        ),
       );
     };
     svg.addEventListener('wheel', onWheel, { passive: false });
@@ -319,7 +323,7 @@ export function InteractiveMap({
   }, [canvasWidth, canvasHeight]);
 
   const zoomBy = (factor: number) => {
-    setView((v) => zoomAround(v, v.zoom * factor, { x: v.cx, y: v.cy }, canvas));
+    setView((v) => zoomAround(v, v.zoom * factor, { x: v.cx, y: v.cy }, canvas, PAN_SLACK));
   };
 
   const handleCanvasClick = (e: ReactMouseEvent<SVGSVGElement>) => {
@@ -439,7 +443,7 @@ export function InteractiveMap({
       const k = Math.min(rect.width / (canvasWidth / zoom), rect.height / (canvasHeight / zoom));
       const cx = g.startMid.x - (pinch.mid.x - (rect.left + rect.width / 2)) / k;
       const cy = g.startMid.y - (pinch.mid.y - (rect.top + rect.height / 2)) / k;
-      setView(clampView({ zoom, cx, cy }, canvas));
+      setView(clampView({ zoom, cx, cy }, canvas, PAN_SLACK));
     } else if (g.kind === 'pan') {
       const dx = e.clientX - g.startX;
       const dy = e.clientY - g.startY;
@@ -459,6 +463,7 @@ export function InteractiveMap({
             cy: g.startView.cy - dy / k,
           },
           canvas,
+          PAN_SLACK,
         ),
       );
     } else if (g.kind === 'node') {
