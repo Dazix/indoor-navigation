@@ -77,16 +77,16 @@ after a tap.
 
 ### Scripts
 
-| Script                        | What it does                                             |
-| ----------------------------- | -------------------------------------------------------- |
-| `npm run dev` / `dev:host`    | Dev server (local / LAN over HTTPS)                      |
-| `npm run build`               | Type check (`tsc -b`) and production build into `dist/`  |
-| `npm run preview`             | Serve the production build                               |
-| `npm run test`                | Vitest unit tests (routing, matching, PDR, schema, …)    |
-| `npm run lint` / `typecheck`  | ESLint (typed rules + React hooks) / TypeScript          |
-| `npm run format`              | Prettier                                                 |
-| `npm run generate-pwa-assets` | Rebuild favicons and PWA icons from `public/favicon.svg` |
-| `npm run fetch-model`         | Download the MobileNet v2 (α 0.5) weights into `public/` |
+| Script                        | What it does                                                                                |
+| ----------------------------- | ------------------------------------------------------------------------------------------- |
+| `npm run dev` / `dev:host`    | Dev server (local / LAN over HTTPS)                                                         |
+| `npm run build`               | Type check (`tsc -b`) and production build into `dist/`                                     |
+| `npm run preview`             | Serve the production build                                                                  |
+| `npm run test`                | Vitest unit tests (routing, matching, PDR, schema, …)                                       |
+| `npm run lint` / `typecheck`  | ESLint (typed rules + React hooks) / TypeScript                                             |
+| `npm run format`              | Prettier                                                                                    |
+| `npm run generate-pwa-assets` | Rebuild favicons and PWA icons from `public/favicon.svg`                                    |
+| `npm run fetch-model`         | Download the MobileNet v2 weights into `public/` (alpha 0.5; `-- 1.0` for the larger model) |
 
 ## Deploying to GitHub Pages
 
@@ -412,7 +412,7 @@ src/
 │                 mapLibrary (IndexedDB), mapEditing, imageFiles, mapSharing, p2pSignal, p2pTransfer (WebRTC),
 │                 cloudConfig (config cascade, URL links), cloud/ (Firestore sync, see below)
 └── types/        map, vision, navigation, sensors.d.ts
-public/           default-map.json, sample-floorplan.svg, maps/ (shared map JSON), models/mobilenet_v2_050/, icons
+public/           default-map.json, sample-floorplan.svg, maps/ (shared map JSON), models/mobilenet_v2_050/ and mobilenet_v2_100/, icons
 ```
 
 ## Limitations

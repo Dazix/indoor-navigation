@@ -11,6 +11,7 @@ import {
   MIN_VIEWS,
   type CoverageLevel,
 } from '../../services/coverage';
+import { resolveEmbeddingModel, type EmbeddingModelId } from '../../services/embeddingModels';
 import { captureFrame, captureThumbnail, isFrameReady } from '../../services/visionMatcher';
 import type { MapNode } from '../../types/map';
 import type { EmbeddingSample } from '../../types/vision';
@@ -19,6 +20,8 @@ import { Modal } from '../ui/Modal';
 
 interface WalkthroughModalProps {
   node: MapNode;
+  /** Model of the map; the views are computed by it. */
+  modelId: EmbeddingModelId;
   onClose: () => void;
   onSave: (nodeId: string, samples: EmbeddingSample[]) => void;
 }
@@ -41,7 +44,7 @@ function sampleId(): string {
  * Walkthrough learning: while the user walks slowly through a place, a keyframe is sampled
  * every 1.2 s and stored as an embedding with a thumbnail. Mount with `key={node.id}`.
  */
-export default function WalkthroughModal({ node, onClose, onSave }: WalkthroughModalProps) {
+export default function WalkthroughModal({ node, modelId, onClose, onSave }: WalkthroughModalProps) {
   const [samples, setSamples] = useState<EmbeddingSample[]>(node.embeddings);
   const [recording, setRecording] = useState(false);
   const {
@@ -54,7 +57,7 @@ export default function WalkthroughModal({ node, onClose, onSave }: WalkthroughM
     zoom,
     setZoom,
   } = useCamera(true, WIDE_CONSTRAINTS);
-  const { status: modelStatus, engine, load, embedStored } = useTensorFlow();
+  const { status: modelStatus, engine, load, embedStored } = useTensorFlow(modelId);
   const orientation = useOrientation();
   const busy = useRef(false);
   // Read inside the capture timer, which must not restart whenever the compass moves.
@@ -127,7 +130,7 @@ export default function WalkthroughModal({ node, onClose, onSave }: WalkthroughM
         modelLoading
           ? 'Loading AI model…'
           : engine === 'mobilenet'
-            ? 'MobileNet v2 embeddings'
+            ? resolveEmbeddingModel(modelId).label
             : 'Colour descriptor (fallback)'
       }
       footer={

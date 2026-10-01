@@ -14,6 +14,7 @@ import {
   pickAutoMatch,
   rankMatches,
 } from '../../services/visionMatcher';
+import { resolveEmbeddingModel } from '../../services/embeddingModels';
 import { pushFrame, smoothMatches } from '../../services/scoreSmoothing';
 import { proximityBoosts, type LocationFix, type WalkEstimate } from '../../services/locationPrior';
 import type { MapData } from '../../types/map';
@@ -70,7 +71,8 @@ export default function VisionScannerModal({
     zoom,
     setZoom,
   } = useCamera(true, WIDE_CONSTRAINTS);
-  const { status: modelStatus, engine, load, embed } = useTensorFlow();
+  const modelId = resolveEmbeddingModel(map.metadata.embeddingModel).id;
+  const { status: modelStatus, engine, load, embed } = useTensorFlow(modelId);
 
   const trainedNodes = useMemo(() => Object.values(map.nodes).filter(isTrained), [map.nodes]);
   const hasMobileNetSamples = useMemo(
@@ -272,7 +274,9 @@ export default function VisionScannerModal({
               ) : (
                 <>
                   <span className="size-2 animate-pulse rounded-full bg-cyan-400" />
-                  {engine === 'mobilenet' ? 'MobileNet v2 embeddings' : 'Colour descriptor (fallback)'}
+                  {engine === 'mobilenet'
+                    ? resolveEmbeddingModel(modelId).label
+                    : 'Colour descriptor (fallback)'}
                 </>
               )}
             </span>

@@ -113,6 +113,19 @@ describe('parseMapData', () => {
     expect(parseMapData(withViews([{ ...view, frame: 'https://example.com/a.jpg' }])).ok).toBe(false);
   });
 
+  it('keeps the recognition model of a map and rejects an unknown one', () => {
+    const withModel = (embeddingModel: unknown) => {
+      const map = clone();
+      (map.metadata as Record<string, unknown>).embeddingModel = embeddingModel;
+      return parseMapData(map);
+    };
+
+    const ok = withModel('mobilenet-v2-100');
+    expect(ok.ok && ok.data.metadata.embeddingModel).toBe('mobilenet-v2-100');
+    expect(withModel(undefined).ok && true).toBe(true);
+    expect(withModel('some-future-model').ok).toBe(false);
+  });
+
   it('rejects nodes outside the map size', () => {
     const map = clone();
     map.metadata = { ...(map.metadata as object), width: 100, height: 10 };
