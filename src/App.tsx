@@ -17,6 +17,7 @@ import { useMapLibrary } from './hooks/useMapLibrary';
 import { useSyncState } from './hooks/useSyncState';
 import { hasUrlConfig, parseUrlConfig, stripConfigParams } from './services/cloudConfig';
 import { readMap } from './services/mapLibrary';
+import { useLocalStorage } from './hooks/useLocalStorage';
 import { useOrientation } from './hooks/useOrientation';
 import { usePDR } from './hooks/usePDR';
 import { useTensorFlow } from './hooks/useTensorFlow';
@@ -53,6 +54,7 @@ import {
 import { importMapFromFile, resolveAssetUrl } from './services/mapStorage';
 import { computeRoute, formatDistance } from './services/navigation';
 import { hrefForMode, modeFromHash } from './services/modeRoute';
+import { parseMapRotationPref, type MapRotationPref } from './services/viewport';
 import type { MapData, Point } from './types/map';
 import type { AppMode, EditorTool } from './types/navigation';
 import type { P2PRole } from './components/maps/P2PTransferModal';
@@ -105,6 +107,11 @@ export default function App() {
   const { map, activeMapId, updateMap } = library;
   const tf = useTensorFlow();
 
+  const [mapRotation, setMapRotation] = useLocalStorage<MapRotationPref>(
+    'indoor-nav:map-rotation',
+    'auto',
+    parseMapRotationPref,
+  );
   const [mode, setMode] = useState<AppMode>(() => modeFromHash(window.location.hash));
   const [tool, setTool] = useState<EditorTool>('select');
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
@@ -738,6 +745,8 @@ export default function App() {
               }}
               focus={mode === 'editor' ? mapFocus : null}
               pickingLocation={picking}
+              mapRotation={mapRotation}
+              onMapRotationChange={setMapRotation}
               measureLine={mode === 'editor' && tool === 'measure' ? measure : undefined}
               onBendInsert={(edgeIndex, segmentIndex, point) => {
                 updateMap((m) => insertBend(m, edgeIndex, segmentIndex, point));

@@ -14,6 +14,9 @@ Firebase project (see [Cloud sync](#cloud-sync-optional-firebase-backend)).
 - **2D navigation.** Tap a room or location to get the shortest walkable route (A\* over the corridor graph),
   with real distances in meters. You can also search for a place by name; focusing the empty search field
   lists the last 5 places you picked on that map.
+- **Map orientation.** A wide plan on a portrait phone (or a tall one on a landscape screen) is turned 90°
+  counter-clockwise automatically when that makes it much bigger. The rotate button below the zoom buttons
+  cycles Auto, Original and Turned. In Auto the Editor keeps the plan upright. The saved map is not changed.
 - **Markerless visual localization.** Walk through a place once in the Editor and the app records camera
   keyframes as MobileNet v2 embeddings. The scanner then recognizes where you are by cosine similarity (k-NN)
   against those views. Everything runs on the device with TensorFlow.js.

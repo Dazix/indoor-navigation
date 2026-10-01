@@ -1,4 +1,4 @@
-import { Maximize, Minus, Plus } from 'lucide-react';
+import { Maximize, Minus, Plus, RotateCcw } from 'lucide-react';
 import {
   useEffect,
   useLayoutEffect,
@@ -16,14 +16,19 @@ import type { Route } from '../../services/navigation';
 import { isTrained } from '../../services/visionMatcher';
 import {
   clampView,
+  displaySize,
   fitView,
   MAX_ZOOM,
+  mapToDisplay,
   markerBaseScale,
   nodeDotScale,
   MIN_ZOOM,
+  resolveRotated,
+  rotatedMapTransform,
   snapStep,
   viewBoxOf,
   zoomAround,
+  type MapRotationPref,
   type MapView,
 } from '../../services/viewport';
 import type { MapData, Point } from '../../types/map';
@@ -57,7 +62,21 @@ interface InteractiveMapProps {
   measureLine?: Point[];
   /** The user is choosing where they are: every location is marked as tappable. */
   pickingLocation?: boolean;
+  /** Orientation of the plan on screen: follow the screen shape (auto) or a fixed choice. */
+  mapRotation: MapRotationPref;
+  onMapRotationChange: (pref: MapRotationPref) => void;
 }
+
+const ROTATION_LABELS: Record<MapRotationPref, string> = {
+  auto: 'Auto',
+  normal: 'Original',
+  rotated: 'Turned',
+};
+const NEXT_ROTATION: Record<MapRotationPref, MapRotationPref> = {
+  auto: 'normal',
+  normal: 'rotated',
+  rotated: 'auto',
+};
 
 /** Hovered spot on a corridor where a click would add a bend. */
 interface BendPreview {
@@ -87,7 +106,7 @@ type Gesture =
   /** A pinch lost a finger: ignore the rest until every pointer is up. */
   | { kind: 'done' };
 
-function toMapPoint(svg: SVGSVGElement, clientX: number, clientY: number): Point {
+function toLocalPoint(svg: SVGGraphicsElement, clientX: number, clientY: number): Point {
   const ctm = svg.getScreenCTM();
   if (!ctm) return { x: 0, y: 0 };
   const p = new DOMPoint(clientX, clientY).matrixTransform(ctm.inverse());
@@ -99,10 +118,13 @@ function MeasureOverlay({
   line,
   metersPerUnit,
   scale: s,
+  unturnDeg,
 }: {
   line: Point[];
   metersPerUnit: number;
   scale: number;
+  /** Turns the label back upright when the plan is shown rotated. */
+  unturnDeg: number;
 }) {
   const [a, b] = line;
   if (!a) return null;
@@ -131,6 +153,7 @@ function MeasureOverlay({
           <text
             x={(a.x + b.x) / 2}
             y={(a.y + b.y) / 2 - 1.6 * s}
+            transform={`rotate(${unturnDeg} ${(a.x + b.x) / 2} ${(a.y + b.y) / 2 - 1.6 * s})`}
             fontSize={2.2 * s}
             textAnchor="middle"
             className="fill-amber-700 font-bold"
@@ -182,8 +205,11 @@ export function InteractiveMap({
   focus,
   measureLine,
   pickingLocation = false,
+  mapRotation,
+  onMapRotationChange,
 }: InteractiveMapProps) {
   const svgRef = useRef<SVGSVGElement>(null);
+  const contentRef = useRef<SVGGElement>(null);
   const gesture = useRef<Gesture | null>(null);
   const pointers = useRef(new Map<number, { x: number; y: number }>());
   const suppressClick = useRef(false);
@@ -199,42 +225,68 @@ export function InteractiveMap({
   /** Corridors and bends react to the pointer only with the tools that edit them. */
   const corridorsInteractive = bendTool || (isEditor && tool === 'delete');
 
-  const [view, setView] = useState<MapView>(() => fitView(size));
-  // A new canvas size (aspect change, rotation) starts from the whole map again.
-  const [viewSize, setViewSize] = useState(`${width}×${height}`);
-  if (viewSize !== `${width}×${height}`) {
-    setViewSize(`${width}×${height}`);
-    setView(fitView(size));
+  // The <svg> fills all free space regardless of the view box, so its pixel size is stable and
+  // tells whether turning the plan by a quarter would fit it better.
+  const [box, setBox] = useState({ width: 0, height: 0 });
+  const [rotated, setRotated] = useState(false);
+  const nextRotated = resolveRotated(mapRotation, isEditor, box, size, rotated);
+  if (nextRotated !== rotated) setRotated(nextRotated);
+  /** Canvas the plan is drawn in; the view (zoom, centre) lives in this frame, not in map units. */
+  const canvas = displaySize(size, rotated);
+
+  const [view, setView] = useState<MapView>(() => fitView(canvas));
+  // A new canvas (aspect change, rotation) starts from the whole map again.
+  const viewKey = `${rotated ? 'r' : ''}${width}×${height}`;
+  const [viewSize, setViewSize] = useState(viewKey);
+  if (viewSize !== viewKey) {
+    setViewSize(viewKey);
+    setView(fitView(canvas));
   }
   const [focusSeq, setFocusSeq] = useState(focus?.seq);
   if (focus && focus.seq !== focusSeq) {
     setFocusSeq(focus.seq);
-    setView(clampView({ zoom: Math.max(view.zoom, FOCUS_ZOOM), cx: focus.point.x, cy: focus.point.y }, size));
+    const at = mapToDisplay(focus.point, size, rotated);
+    setView(clampView({ zoom: Math.max(view.zoom, FOCUS_ZOOM), cx: at.x, cy: at.y }, canvas));
   }
   const viewRef = useRef(view);
   useLayoutEffect(() => {
     viewRef.current = view;
   }, [view]);
 
-  const vb = viewBoxOf(view, size);
-  // The <svg> fills all free space and draws the view box centred inside it, so the on-screen map
-  // scale at 1× zoom is whatever fits the whole map into that box.
+  const vb = viewBoxOf(view, canvas);
+  // At 1× zoom the on-screen map scale is whatever fits the whole canvas into the <svg>.
   const [baseScale, setBaseScale] = useState(1);
   const [dotScale, setDotScale] = useState(1);
+  const canvasWidth = canvas.width;
+  const canvasHeight = canvas.height;
   useEffect(() => {
     const svg = svgRef.current;
     if (!svg) return;
     const observer = new ResizeObserver(() => {
       const rect = svg.getBoundingClientRect();
-      const fitWidthPx = Math.min(rect.width, (rect.height * width) / height);
-      setBaseScale(markerBaseScale(fitWidthPx, width));
+      setBox((prev) =>
+        prev.width === rect.width && prev.height === rect.height
+          ? prev
+          : { width: rect.width, height: rect.height },
+      );
+      const fitWidthPx = Math.min(rect.width, (rect.height * canvasWidth) / canvasHeight);
+      setBaseScale(markerBaseScale(fitWidthPx, canvasWidth));
       setDotScale(nodeDotScale(fitWidthPx));
     });
     observer.observe(svg);
     return () => {
       observer.disconnect();
     };
-  }, [width, height]);
+  }, [canvasWidth, canvasHeight]);
+
+  /** Pointer position in canvas units (the frame the view is in). */
+  const toViewPoint = (svg: SVGSVGElement, clientX: number, clientY: number) =>
+    toLocalPoint(svg, clientX, clientY);
+  /** Pointer position in map units, whatever the plan's orientation. */
+  const toMapPoint = (svg: SVGSVGElement, clientX: number, clientY: number) =>
+    toLocalPoint(contentRef.current ?? svg, clientX, clientY);
+  /** Degrees that turn a label back upright when the plan is shown rotated. */
+  const unturnDeg = rotated ? 90 : 0;
 
   /** Marker scale: nodes, labels and the route keep their on-screen size while zooming. */
   const s = baseScale / view.zoom;
@@ -254,17 +306,20 @@ export function InteractiveMap({
       const current = viewRef.current;
       const factor = Math.exp(-e.deltaY * (e.ctrlKey ? 0.01 : 0.0015));
       setView(
-        zoomAround(current, current.zoom * factor, toMapPoint(svg, e.clientX, e.clientY), { width, height }),
+        zoomAround(current, current.zoom * factor, toLocalPoint(svg, e.clientX, e.clientY), {
+          width: canvasWidth,
+          height: canvasHeight,
+        }),
       );
     };
     svg.addEventListener('wheel', onWheel, { passive: false });
     return () => {
       svg.removeEventListener('wheel', onWheel);
     };
-  }, [width, height]);
+  }, [canvasWidth, canvasHeight]);
 
   const zoomBy = (factor: number) => {
-    setView((v) => zoomAround(v, v.zoom * factor, { x: v.cx, y: v.cy }, size));
+    setView((v) => zoomAround(v, v.zoom * factor, { x: v.cx, y: v.cy }, canvas));
   };
 
   const handleCanvasClick = (e: ReactMouseEvent<SVGSVGElement>) => {
@@ -313,7 +368,7 @@ export function InteractiveMap({
       gesture.current = {
         kind: 'pinch',
         startDist: Math.max(1, pinch.dist),
-        startMid: toMapPoint(svg, pinch.mid.x, pinch.mid.y),
+        startMid: toViewPoint(svg, pinch.mid.x, pinch.mid.y),
         startView: viewRef.current,
       };
       return;
@@ -381,10 +436,10 @@ export function InteractiveMap({
       if (!pinch || rect.width === 0 || rect.height === 0) return;
       const zoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, (g.startView.zoom * pinch.dist) / g.startDist));
       // Keep the map point that started under the fingers under their current midpoint.
-      const k = Math.min(rect.width / (width / zoom), rect.height / (height / zoom));
+      const k = Math.min(rect.width / (canvasWidth / zoom), rect.height / (canvasHeight / zoom));
       const cx = g.startMid.x - (pinch.mid.x - (rect.left + rect.width / 2)) / k;
       const cy = g.startMid.y - (pinch.mid.y - (rect.top + rect.height / 2)) / k;
-      setView(clampView({ zoom, cx, cy }, size));
+      setView(clampView({ zoom, cx, cy }, canvas));
     } else if (g.kind === 'pan') {
       const dx = e.clientX - g.startX;
       const dy = e.clientY - g.startY;
@@ -394,7 +449,7 @@ export function InteractiveMap({
         svg.setPointerCapture(e.pointerId);
       }
       if (rect.width === 0 || rect.height === 0) return;
-      const { w, h } = viewBoxOf(g.startView, size);
+      const { w, h } = viewBoxOf(g.startView, canvas);
       const k = Math.min(rect.width / w, rect.height / h);
       setView(
         clampView(
@@ -403,7 +458,7 @@ export function InteractiveMap({
             cx: g.startView.cx - dx / k,
             cy: g.startView.cy - dy / k,
           },
-          size,
+          canvas,
         ),
       );
     } else if (g.kind === 'node') {
@@ -487,276 +542,292 @@ export function InteractiveMap({
             e.preventDefault();
           }}
         >
-          {floorPlanImage ? (
-            <image
-              href={resolveAssetUrl(floorPlanImage)}
-              x={(width - imgW) / 2}
-              y={(height - imgH) / 2}
-              width={imgW}
-              height={imgH}
-              preserveAspectRatio="none"
-              transform={
-                floorPlanRotationDeg
-                  ? `rotate(${floorPlanRotationDeg} ${width / 2} ${height / 2})`
-                  : undefined
-              }
-              opacity={0.9}
-            />
-          ) : (
-            <g className="stroke-slate-100 dark:stroke-slate-800" strokeWidth={0.4 * s}>
-              {gridLines(width).map((c) => (
-                <line key={`x${c}`} x1={c} y1={0} x2={c} y2={height} />
-              ))}
-              {gridLines(height).map((c) => (
-                <line key={`y${c}`} x1={0} y1={c} x2={width} y2={c} />
-              ))}
-            </g>
-          )}
-
-          {rooms.map((room) => {
-            const linked = room.nodeId in nodes;
-            const isTarget = destination === room.nodeId;
-            return (
-              <g
-                key={room.id}
-                onClick={(e) => {
-                  if (isEditor || !linked) return;
-                  e.stopPropagation();
-                  onRoomTap(room.nodeId);
-                }}
-                className={!isEditor && linked ? 'cursor-pointer transition-opacity hover:opacity-80' : ''}
-              >
-                <rect
-                  x={room.x}
-                  y={room.y}
-                  width={room.w}
-                  height={room.h}
-                  rx={2}
-                  fill={isTarget ? '#ede9fe' : room.color}
-                  opacity={floorPlanImage ? 0.55 : 0.85}
-                  stroke={isTarget ? '#6366f1' : '#94a3b8'}
-                  strokeWidth={(isTarget ? 1.2 : 0.5) * s}
-                />
-                <text
-                  x={room.x + room.w / 2}
-                  y={room.y + 3.6}
-                  fontSize={2.6}
-                  textAnchor="middle"
-                  dominantBaseline="middle"
-                  className={`pointer-events-none font-bold ${isTarget ? 'fill-brand-700' : 'fill-slate-800'}`}
-                >
-                  {room.label}
-                </text>
+          <g ref={contentRef} transform={rotated ? rotatedMapTransform(size) : undefined}>
+            {floorPlanImage ? (
+              <image
+                href={resolveAssetUrl(floorPlanImage)}
+                x={(width - imgW) / 2}
+                y={(height - imgH) / 2}
+                width={imgW}
+                height={imgH}
+                preserveAspectRatio="none"
+                transform={
+                  floorPlanRotationDeg
+                    ? `rotate(${floorPlanRotationDeg} ${width / 2} ${height / 2})`
+                    : undefined
+                }
+                opacity={0.9}
+              />
+            ) : (
+              <g className="stroke-slate-100 dark:stroke-slate-800" strokeWidth={0.4 * s}>
+                {gridLines(width).map((c) => (
+                  <line key={`x${c}`} x1={c} y1={0} x2={c} y2={height} />
+                ))}
+                {gridLines(height).map((c) => (
+                  <line key={`y${c}`} x1={0} y1={c} x2={width} y2={c} />
+                ))}
               </g>
-            );
-          })}
+            )}
 
-          {edges.map((edge, edgeIndex) => {
-            const points = corridorPoints(nodes, edge);
-            if (points.length === 0) return null;
-            const line = points.map((p) => `${p.x},${p.y}`).join(' ');
-            return (
-              <g key={`${edge[0]}-${edge[1]}`} className="group">
-                <polyline
-                  points={line}
-                  fill="none"
-                  className={
-                    isEditor
-                      ? `stroke-slate-400 ${tool === 'delete' ? 'group-hover:stroke-red-500' : ''}`
-                      : 'stroke-slate-300 dark:stroke-slate-600'
-                  }
-                  strokeWidth={(isEditor ? 1.3 : 1) * s}
-                  strokeDasharray={isEditor ? `${1.5 * s} ${1.5 * s}` : undefined}
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-                {corridorsInteractive && (
-                  // Invisible wide stroke that catches hovers, clicks and taps on the corridor.
+            {rooms.map((room) => {
+              const linked = room.nodeId in nodes;
+              const isTarget = destination === room.nodeId;
+              // The label sits at the top of the room as it appears on screen.
+              const labelX = rotated ? room.x + room.w - 3.6 : room.x + room.w / 2;
+              const labelY = rotated ? room.y + room.h / 2 : room.y + 3.6;
+              return (
+                <g
+                  key={room.id}
+                  onClick={(e) => {
+                    if (isEditor || !linked) return;
+                    e.stopPropagation();
+                    onRoomTap(room.nodeId);
+                  }}
+                  className={!isEditor && linked ? 'cursor-pointer transition-opacity hover:opacity-80' : ''}
+                >
+                  <rect
+                    x={room.x}
+                    y={room.y}
+                    width={room.w}
+                    height={room.h}
+                    rx={2}
+                    fill={isTarget ? '#ede9fe' : room.color}
+                    opacity={floorPlanImage ? 0.55 : 0.85}
+                    stroke={isTarget ? '#6366f1' : '#94a3b8'}
+                    strokeWidth={(isTarget ? 1.2 : 0.5) * s}
+                  />
+                  <text
+                    x={labelX}
+                    y={labelY}
+                    transform={`rotate(${unturnDeg} ${labelX} ${labelY})`}
+                    fontSize={2.6}
+                    textAnchor="middle"
+                    dominantBaseline="middle"
+                    className={`pointer-events-none font-bold ${isTarget ? 'fill-brand-700' : 'fill-slate-800'}`}
+                  >
+                    {room.label}
+                  </text>
+                </g>
+              );
+            })}
+
+            {edges.map((edge, edgeIndex) => {
+              const points = corridorPoints(nodes, edge);
+              if (points.length === 0) return null;
+              const line = points.map((p) => `${p.x},${p.y}`).join(' ');
+              return (
+                <g key={`${edge[0]}-${edge[1]}`} className="group">
                   <polyline
                     points={line}
                     fill="none"
-                    stroke="transparent"
-                    strokeWidth={2 * CORRIDOR_HIT_WIDTH * s}
+                    className={
+                      isEditor
+                        ? `stroke-slate-400 ${tool === 'delete' ? 'group-hover:stroke-red-500' : ''}`
+                        : 'stroke-slate-300 dark:stroke-slate-600'
+                    }
+                    strokeWidth={(isEditor ? 1.3 : 1) * s}
+                    strokeDasharray={isEditor ? `${1.5 * s} ${1.5 * s}` : undefined}
                     strokeLinecap="round"
                     strokeLinejoin="round"
-                    pointerEvents="stroke"
-                    role="button"
-                    aria-label={tool === 'delete' ? 'Delete corridor' : 'Add bend point'}
-                    data-edge-index={edgeIndex}
-                    className={tool === 'delete' ? 'cursor-pointer' : 'cursor-copy'}
-                    onClick={(e) => {
-                      // In the add and link tools the click bubbles up to the canvas tap, which adds the bend.
-                      if (tool === 'add_node' || tool === 'link_nodes') return;
-                      e.stopPropagation();
-                      if (tool === 'delete') onEdgeTap?.(edgeIndex);
-                    }}
                   />
-                )}
-              </g>
-            );
-          })}
-
-          {isEditor &&
-            edges.map((edge, edgeIndex) =>
-              edgeBends(edge).map((p, bendIndex) => (
-                <g
-                  key={`${edge[0]}-${edge[1]}-${bendIndex}`}
-                  role="button"
-                  aria-label="Bend point"
-                  data-edge-index={edgeIndex}
-                  data-bend-index={bendIndex}
-                  pointerEvents={corridorsInteractive ? undefined : 'none'}
-                  className={`group ${
-                    tool === 'delete'
-                      ? 'cursor-pointer'
-                      : canDrag
-                        ? draggingBend
-                          ? 'cursor-grabbing'
-                          : 'cursor-grab'
-                        : ''
-                  }`}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (tool === 'delete') onBendTap?.(edgeIndex, bendIndex);
-                  }}
-                >
-                  <circle cx={p.x} cy={p.y} r={3 * s} fill="transparent" />
-                  <rect
-                    x={p.x - 0.9 * s}
-                    y={p.y - 0.9 * s}
-                    width={1.8 * s}
-                    height={1.8 * s}
-                    transform={`rotate(45 ${p.x} ${p.y})`}
-                    className={`fill-white stroke-slate-500 ${
-                      tool === 'delete' ? 'group-hover:stroke-red-500' : 'group-hover:stroke-brand-600'
-                    }`}
-                    strokeWidth={0.5 * s}
-                  />
+                  {corridorsInteractive && (
+                    // Invisible wide stroke that catches hovers, clicks and taps on the corridor.
+                    <polyline
+                      points={line}
+                      fill="none"
+                      stroke="transparent"
+                      strokeWidth={2 * CORRIDOR_HIT_WIDTH * s}
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      pointerEvents="stroke"
+                      role="button"
+                      aria-label={tool === 'delete' ? 'Delete corridor' : 'Add bend point'}
+                      data-edge-index={edgeIndex}
+                      className={tool === 'delete' ? 'cursor-pointer' : 'cursor-copy'}
+                      onClick={(e) => {
+                        // In the add and link tools the click bubbles up to the canvas tap, which adds the bend.
+                        if (tool === 'add_node' || tool === 'link_nodes') return;
+                        e.stopPropagation();
+                        if (tool === 'delete') onEdgeTap?.(edgeIndex);
+                      }}
+                    />
+                  )}
                 </g>
-              )),
+              );
+            })}
+
+            {isEditor &&
+              edges.map((edge, edgeIndex) =>
+                edgeBends(edge).map((p, bendIndex) => (
+                  <g
+                    key={`${edge[0]}-${edge[1]}-${bendIndex}`}
+                    role="button"
+                    aria-label="Bend point"
+                    data-edge-index={edgeIndex}
+                    data-bend-index={bendIndex}
+                    pointerEvents={corridorsInteractive ? undefined : 'none'}
+                    className={`group ${
+                      tool === 'delete'
+                        ? 'cursor-pointer'
+                        : canDrag
+                          ? draggingBend
+                            ? 'cursor-grabbing'
+                            : 'cursor-grab'
+                          : ''
+                    }`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (tool === 'delete') onBendTap?.(edgeIndex, bendIndex);
+                    }}
+                  >
+                    <circle cx={p.x} cy={p.y} r={3 * s} fill="transparent" />
+                    <rect
+                      x={p.x - 0.9 * s}
+                      y={p.y - 0.9 * s}
+                      width={1.8 * s}
+                      height={1.8 * s}
+                      transform={`rotate(45 ${p.x} ${p.y})`}
+                      className={`fill-white stroke-slate-500 ${
+                        tool === 'delete' ? 'group-hover:stroke-red-500' : 'group-hover:stroke-brand-600'
+                      }`}
+                      strokeWidth={0.5 * s}
+                    />
+                  </g>
+                )),
+              )}
+
+            {bendTool && bendPreview && (
+              <circle
+                cx={bendPreview.point.x}
+                cy={bendPreview.point.y}
+                r={1.2 * s}
+                className="fill-brand-500/50 stroke-white"
+                strokeWidth={0.4 * s}
+                pointerEvents="none"
+              />
             )}
 
-          {bendTool && bendPreview && (
-            <circle
-              cx={bendPreview.point.x}
-              cy={bendPreview.point.y}
-              r={1.2 * s}
-              className="fill-brand-500/50 stroke-white"
-              strokeWidth={0.4 * s}
-              pointerEvents="none"
-            />
-          )}
+            {route && <PathOverlay route={route} scale={s} />}
 
-          {route && <PathOverlay route={route} scale={s} />}
+            {Object.values(nodes).map((node) => {
+              const isSelected = selectedNodeId === node.id;
+              const isUser = currentLocation === node.id;
+              const isTarget = destination === node.id;
+              const trained = isTrained(node);
+              // The label sits above the dot as it appears on screen.
+              const labelGap = (2.4 * dotScale + 1) * s;
+              const labelX = rotated ? node.x + labelGap : node.x;
+              const labelY = rotated ? node.y : node.y - labelGap;
+              const fill = isTarget
+                ? '#ef4444'
+                : isSelected
+                  ? '#f59e0b'
+                  : isUser
+                    ? '#2563eb'
+                    : trained
+                      ? '#10b981'
+                      : '#64748b';
 
-          {Object.values(nodes).map((node) => {
-            const isSelected = selectedNodeId === node.id;
-            const isUser = currentLocation === node.id;
-            const isTarget = destination === node.id;
-            const trained = isTrained(node);
-            const fill = isTarget
-              ? '#ef4444'
-              : isSelected
-                ? '#f59e0b'
-                : isUser
-                  ? '#2563eb'
-                  : trained
-                    ? '#10b981'
-                    : '#64748b';
-
-            return (
-              <g
-                key={node.id}
-                role="button"
-                aria-label={node.label}
-                data-node-id={node.id}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (!canDrag) onNodeTap(node.id);
-                }}
-                className={
-                  canDrag ? (draggingId === node.id ? 'cursor-grabbing' : 'cursor-grab') : 'cursor-pointer'
-                }
-              >
-                {/* Invisible larger hit area for fingers. */}
-                <circle cx={node.x} cy={node.y} r={4 * s} fill="transparent" />
-                {pickingLocation && !isEditor && (
+              return (
+                <g
+                  key={node.id}
+                  role="button"
+                  aria-label={node.label}
+                  data-node-id={node.id}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (!canDrag) onNodeTap(node.id);
+                  }}
+                  className={
+                    canDrag ? (draggingId === node.id ? 'cursor-grabbing' : 'cursor-grab') : 'cursor-pointer'
+                  }
+                >
+                  {/* Invisible larger hit area for fingers. */}
+                  <circle cx={node.x} cy={node.y} r={4 * s} fill="transparent" />
+                  {pickingLocation && !isEditor && (
+                    <circle
+                      cx={node.x}
+                      cy={node.y}
+                      r={3.6 * s}
+                      fill="none"
+                      stroke="#6366f1"
+                      strokeWidth={0.7 * s}
+                      pointerEvents="none"
+                      className="origin-center [transform-box:fill-box] motion-safe:animate-pick-pulse"
+                    />
+                  )}
+                  {isSelected && (
+                    <circle
+                      cx={node.x}
+                      cy={node.y}
+                      r={4.4 * s}
+                      fill="none"
+                      stroke="#f59e0b"
+                      strokeWidth={0.8 * s}
+                      strokeDasharray={`${1.5 * s} ${s}`}
+                    />
+                  )}
                   <circle
                     cx={node.x}
                     cy={node.y}
-                    r={3.6 * s}
-                    fill="none"
-                    stroke="#6366f1"
-                    strokeWidth={0.7 * s}
-                    pointerEvents="none"
-                    className="origin-center [transform-box:fill-box] motion-safe:animate-pick-pulse"
-                  />
-                )}
-                {isSelected && (
-                  <circle
-                    cx={node.x}
-                    cy={node.y}
-                    r={4.4 * s}
-                    fill="none"
-                    stroke="#f59e0b"
-                    strokeWidth={0.8 * s}
-                    strokeDasharray={`${1.5 * s} ${s}`}
-                  />
-                )}
-                <circle
-                  cx={node.x}
-                  cy={node.y}
-                  r={(isEditor ? 2.4 : 1.7) * s * dotScale}
-                  fill={fill}
-                  stroke="#fff"
-                  strokeWidth={0.6 * s}
-                />
-                {trained && isEditor && (
-                  <circle
-                    cx={node.x + 1.8 * s * dotScale}
-                    cy={node.y - 1.8 * s * dotScale}
-                    r={0.9 * s}
-                    fill="#059669"
+                    r={(isEditor ? 2.4 : 1.7) * s * dotScale}
+                    fill={fill}
                     stroke="#fff"
-                    strokeWidth={0.3 * s}
+                    strokeWidth={0.6 * s}
+                  />
+                  {trained && isEditor && (
+                    <circle
+                      cx={node.x + 1.8 * s * dotScale}
+                      cy={node.y - 1.8 * s * dotScale}
+                      r={0.9 * s}
+                      fill="#059669"
+                      stroke="#fff"
+                      strokeWidth={0.3 * s}
+                    />
+                  )}
+                  {isEditor && (
+                    <text
+                      x={labelX}
+                      y={labelY}
+                      transform={`rotate(${unturnDeg} ${labelX} ${labelY})`}
+                      fontSize={2 * s}
+                      textAnchor="middle"
+                      className="pointer-events-none fill-slate-900 font-semibold"
+                      stroke="#ffffff"
+                      strokeWidth={0.5 * s}
+                      paintOrder="stroke"
+                    >
+                      {node.label}
+                    </text>
+                  )}
+                </g>
+              );
+            })}
+
+            {!isEditor && userPoint && (
+              <g transform={`translate(${userPoint.x} ${userPoint.y}) scale(${s})`} pointerEvents="none">
+                {userHeadingDeg != null && (
+                  <path
+                    d="M0 0 L-3.4 -8 A 8.7 8.7 0 0 1 3.4 -8 Z"
+                    transform={`rotate(${userHeadingDeg})`}
+                    className="fill-blue-500/25"
                   />
                 )}
-                {isEditor && (
-                  <text
-                    x={node.x}
-                    y={node.y - (2.4 * dotScale + 1) * s}
-                    fontSize={2 * s}
-                    textAnchor="middle"
-                    className="pointer-events-none fill-slate-900 font-semibold"
-                    stroke="#ffffff"
-                    strokeWidth={0.5 * s}
-                    paintOrder="stroke"
-                  >
-                    {node.label}
-                  </text>
-                )}
+                <circle r={4.5} className="animate-ping fill-blue-500/30" />
+                <circle r={2.2} fill="#2563eb" stroke="#fff" strokeWidth={0.6} />
+                <circle r={0.8} fill="#fff" />
               </g>
-            );
-          })}
+            )}
 
-          {!isEditor && userPoint && (
-            <g transform={`translate(${userPoint.x} ${userPoint.y}) scale(${s})`} pointerEvents="none">
-              {userHeadingDeg != null && (
-                <path
-                  d="M0 0 L-3.4 -8 A 8.7 8.7 0 0 1 3.4 -8 Z"
-                  transform={`rotate(${userHeadingDeg})`}
-                  className="fill-blue-500/25"
-                />
-              )}
-              <circle r={4.5} className="animate-ping fill-blue-500/30" />
-              <circle r={2.2} fill="#2563eb" stroke="#fff" strokeWidth={0.6} />
-              <circle r={0.8} fill="#fff" />
-            </g>
-          )}
-
-          {measureLine && measureLine.length > 0 && (
-            <MeasureOverlay line={measureLine} metersPerUnit={metadata.metersPerUnit} scale={s} />
-          )}
+            {measureLine && measureLine.length > 0 && (
+              <MeasureOverlay
+                line={measureLine}
+                metersPerUnit={metadata.metersPerUnit}
+                scale={s}
+                unturnDeg={unturnDeg}
+              />
+            )}
+          </g>
         </svg>
       </div>
 
@@ -789,11 +860,25 @@ export function InteractiveMap({
         <ZoomButton
           label="Fit map"
           onClick={() => {
-            setView(fitView(size));
+            setView(fitView(canvas));
           }}
           disabled={view.zoom <= MIN_ZOOM}
         >
           <Maximize className="size-4" />
+        </ZoomButton>
+        <ZoomButton
+          label={`Map orientation: ${ROTATION_LABELS[mapRotation]}. Tap to change`}
+          onClick={() => {
+            onMapRotationChange(NEXT_ROTATION[mapRotation]);
+          }}
+          disabled={false}
+        >
+          <span className="relative">
+            <RotateCcw className="size-4" />
+            {mapRotation === 'auto' && (
+              <span className="absolute -top-1.5 -right-2 text-[9px] leading-none font-bold">A</span>
+            )}
+          </span>
         </ZoomButton>
       </div>
     </div>
