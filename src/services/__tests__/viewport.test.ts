@@ -28,6 +28,12 @@ describe('map viewport', () => {
     expect(clampView({ zoom: 50, cx: 50, cy: 25 }, size).zoom).toBe(8);
   });
 
+  it('lets the view be dragged past the edge by the slack share of the visible span', () => {
+    // Zoom 1 shows 100×50; 30 % slack allows the centre 15 units past the vertical edge.
+    expect(clampView({ zoom: 1, cx: 50, cy: -100 }, size, 0.3)).toEqual({ zoom: 1, cx: 50, cy: 10 });
+    expect(clampView({ zoom: 1, cx: 50, cy: 100 }, size, 0.3)).toEqual({ zoom: 1, cx: 50, cy: 40 });
+  });
+
   it('zooms around an anchor that stays fixed on screen', () => {
     const view = zoomAround(fitView(size), 2, { x: 50, y: 25 }, size);
     expect(view).toEqual({ zoom: 2, cx: 50, cy: 25 });
