@@ -1,5 +1,6 @@
-import { useMemo, useState } from 'react';
-import { analyzeConfusability } from '../../services/confusability';
+import { useEffect, useState } from 'react';
+import { analyzeConfusabilityAsync, type ConfusabilityReport } from '../../services/confusability';
+import { AUTO_MATCH } from '../../services/visionMatcher';
 import type { MapData } from '../../types/map';
 import { Modal } from '../ui/Modal';
 
@@ -16,16 +17,39 @@ interface RecognitionQualityModalProps {
  */
 export default function RecognitionQualityModal({ map, onClose, onPickNode }: RecognitionQualityModalProps) {
   const [centered, setCentered] = useState(true);
-  const report = useMemo(() => analyzeConfusability(map.nodes, { centered }), [map.nodes, centered]);
+  const [done, setDone] = useState<{
+    nodes: MapData['nodes'];
+    centered: boolean;
+    report: ConfusabilityReport;
+  } | null>(null);
+
+  // Hundreds of views take seconds to compare, so the work runs in slices and the dialog opens at once.
+  useEffect(() => {
+    let cancelled = false;
+    void analyzeConfusabilityAsync(map.nodes, { centered }, { isCancelled: () => cancelled }).then(
+      (report) => {
+        if (report) setDone({ nodes: map.nodes, centered, report });
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [map.nodes, centered]);
+
+  const report = done?.nodes === map.nodes && done.centered === centered ? done.report : null;
 
   const label = (id: string) => map.nodes[id]?.label ?? id;
-  const percent = Math.round(report.accuracy * 100);
+  const percent = Math.round((report?.accuracy ?? 0) * 100);
   const tone = percent >= 90 ? 'text-emerald-600' : percent >= 70 ? 'text-amber-600' : 'text-red-600';
 
   return (
     <Modal open onClose={onClose} title="Recognition quality" subtitle={map.metadata.name}>
       <div className="space-y-4 p-4 text-sm">
-        {report.total === 0 ? (
+        {report === null ? (
+          <p role="status" className="p-3 text-center text-xs text-slate-500">
+            Comparing the views…
+          </p>
+        ) : report.total === 0 ? (
           <p className="rounded-xl bg-slate-100 p-3 text-xs text-slate-600 dark:bg-slate-800 dark:text-slate-300">
             Nothing to test yet. Record a walkthrough with at least two views for some places.
           </p>
@@ -44,6 +68,22 @@ export default function RecognitionQualityModal({ map, onClose, onPickNode }: Re
                 <p className="text-xl font-bold">{report.total}</p>
                 <p className="text-[11px] text-slate-500">views tested</p>
               </div>
+            </div>
+
+            <div className="rounded-xl bg-slate-100 p-3 text-xs dark:bg-slate-800">
+              <p className="font-semibold">
+                Scanner would confirm on its own (score ≥ {AUTO_MATCH.minScore}, lead ≥ {AUTO_MATCH.minMargin}
+                )
+              </p>
+              <p className="mt-1 text-slate-600 dark:text-slate-300">
+                <span className="text-emerald-600">{report.auto.right} right</span> ·{' '}
+                <span className={report.auto.wrong > 0 ? 'text-red-600' : ''}>{report.auto.wrong} wrong</span>{' '}
+                · {report.auto.asked} would ask you
+              </p>
+              <p className="mt-1 text-[11px] text-slate-500">
+                Wrong ones are the costly kind: raise the score or lead until they vanish. Many asked means
+                the thresholds are too strict or the views too similar.
+              </p>
             </div>
 
             <label className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300">
@@ -92,7 +132,7 @@ export default function RecognitionQualityModal({ map, onClose, onPickNode }: Re
           </>
         )}
 
-        {report.skippedNodes > 0 && (
+        {report && report.skippedNodes > 0 && (
           <p className="text-[11px] text-slate-500">
             {report.skippedNodes} place{report.skippedNodes === 1 ? ' has' : 's have'} only one view and{' '}
             {report.skippedNodes === 1 ? 'was' : 'were'} not tested.

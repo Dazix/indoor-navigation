@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { MapNode } from '../../types/map';
-import { analyzeConfusability } from '../confusability';
+import { analyzeConfusability, analyzeConfusabilityAsync } from '../confusability';
 
 function trained(id: string, vectors: number[][]): MapNode {
   return {
@@ -48,7 +48,38 @@ describe('analyzeConfusability', () => {
 
   it('returns an empty report when no node has two views', () => {
     const report = analyzeConfusability({ a: trained('a', [[1, 0]]) });
-    expect(report).toEqual({ total: 0, accuracy: 0, meanMargin: 0, confused: [], skippedNodes: 1 });
+    expect(report).toEqual({
+      total: 0,
+      accuracy: 0,
+      meanMargin: 0,
+      confused: [],
+      skippedNodes: 1,
+      auto: { right: 0, wrong: 0, asked: 0 },
+    });
+  });
+
+  it('counts what the scanner would confirm by itself, rightly or wrongly', () => {
+    const clear = {
+      a: trained('a', [
+        [1, 0, 0],
+        [0.9, 0.1, 0],
+      ]),
+      b: trained('b', [
+        [0, 1, 0],
+        [0.1, 0.9, 0],
+      ]),
+    };
+    expect(analyzeConfusability(clear, { centered: false }).auto).toEqual({ right: 4, wrong: 0, asked: 0 });
+
+    const mixedUp = {
+      a: trained('a', [
+        [1, 0, 0],
+        [0, 1, 0],
+      ]),
+      b: trained('b', [[0.9, 0.1, 0]]),
+    };
+    // [1,0,0] is confirmed as b (wrong); [0,1,0] is too weak to confirm anything.
+    expect(analyzeConfusability(mixedUp, { centered: false }).auto).toEqual({ right: 0, wrong: 1, asked: 1 });
   });
 
   it('reports the lead over the runner-up', () => {
@@ -63,5 +94,35 @@ describe('analyzeConfusability', () => {
     // Each held-out view matches its twin at 100 % and the other place at 0 %.
     expect(report.meanMargin).toBe(100);
     expect(report.skippedNodes).toBe(1);
+  });
+});
+
+describe('analyzeConfusabilityAsync', () => {
+  const nodes = {
+    a: trained('a', [
+      [1, 0, 0],
+      [0.9, 0.1, 0],
+    ]),
+    b: trained('b', [
+      [0, 1, 0],
+      [0.1, 0.9, 0],
+    ]),
+  };
+
+  it('gives the same report as the synchronous analysis', async () => {
+    const progress: number[] = [];
+    const report = await analyzeConfusabilityAsync(
+      nodes,
+      { centered: false },
+      {
+        onProgress: (share) => progress.push(share),
+      },
+    );
+    expect(report).toEqual(analyzeConfusability(nodes, { centered: false }));
+    expect(progress).toEqual([0.5, 1]);
+  });
+
+  it('stops when cancelled', async () => {
+    expect(await analyzeConfusabilityAsync(nodes, {}, { isCancelled: () => true })).toBeNull();
   });
 });

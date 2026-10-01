@@ -66,10 +66,20 @@ export function centeredCosineSimilarity(
   center: readonly number[],
 ): number {
   if (a.length !== center.length || b.length !== center.length) return cosineSimilarity(a, b);
-  return cosineSimilarity(
-    a.map((v, i) => v - (center[i] as number)),
-    b.map((v, i) => v - (center[i] as number)),
-  );
+  // One pass without temporary arrays: this runs for every stored view on every comparison.
+  let dot = 0;
+  let normA = 0;
+  let normB = 0;
+  for (let i = 0; i < center.length; i++) {
+    const c = center[i] as number;
+    const x = (a[i] as number) - c;
+    const y = (b[i] as number) - c;
+    dot += x * y;
+    normA += x * x;
+    normB += y * y;
+  }
+  if (normA === 0 || normB === 0) return 0;
+  return Math.max(0, Math.min(1, dot / Math.sqrt(normA * normB)));
 }
 
 /** Number of vertical strips a frame is split into (left half, right half). */
@@ -211,6 +221,9 @@ export interface AutoMatchOptions {
   /** Ranking lead in percent points the best match needs over the runner-up. */
   minMargin: number;
 }
+
+/** What the scanner needs to confirm a place without asking: strong and clearly ahead of the runner-up. */
+export const AUTO_MATCH: AutoMatchOptions = { minScore: 80, minMargin: 8 };
 
 /**
  * The best match when it is safe to confirm automatically: strong enough and clearly ahead of the
