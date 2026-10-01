@@ -643,7 +643,12 @@ export default function App() {
               updateMap((m) => setFloorPlanFineRotation(m, deg), 'fine-rotation');
             }}
             onExport={() => {
-              void exportMapToFile(map);
+              exportMapToFile(map).catch((err: unknown) => {
+                setNotice({
+                  tone: 'error',
+                  text: err instanceof Error ? err.message : `Export failed: ${String(err)}`,
+                });
+              });
             }}
             onSendNearby={() => {
               setP2PRole('send');

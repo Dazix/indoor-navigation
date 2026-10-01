@@ -6,7 +6,9 @@ import {
   fetchSharedMap,
   inlineFloorPlan,
   mapFileName,
+  MapTooLargeError,
   resolveMapUrl,
+  serializeMap,
   shareCandidates,
 } from '../mapSharing';
 
@@ -20,6 +22,21 @@ describe('map sharing', () => {
   it('names export files after the map', () => {
     const map = createBlankMap('Praha – 3. patro');
     expect(mapFileName(map, new Date('2026-09-25T10:00:00Z'))).toBe('praha-3-patro-2026-09-25.json');
+  });
+
+  it('refuses to serialize a map that import would reject as too large', async () => {
+    const huge = {
+      ...createBlankMap('Big'),
+      floorPlanImage: `data:image/png;base64,${'A'.repeat(26 * 1024 * 1024)}`,
+    };
+    await expect(serializeMap(huge)).rejects.toThrow(MapTooLargeError);
+    await expect(serializeMap(huge)).rejects.toThrow(/Cloud sync/);
+  });
+
+  it('serializes a normal map', async () => {
+    const { json, fileName } = await serializeMap(createBlankMap('Small'));
+    expect(JSON.parse(json)).toMatchObject({ metadata: { name: 'Small' } });
+    expect(fileName).toMatch(/^small-.*\.json$/);
   });
 
   it('offers a .txt copy for share sheets that refuse JSON (Chrome on Android)', () => {
