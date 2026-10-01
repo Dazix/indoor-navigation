@@ -20,7 +20,6 @@ import { readMap } from './services/mapLibrary';
 import { useLocalStorage } from './hooks/useLocalStorage';
 import { useOrientation } from './hooks/useOrientation';
 import { usePDR } from './hooks/usePDR';
-import { useTensorFlow } from './hooks/useTensorFlow';
 import { normalizeDeg } from './services/geometry';
 import type { LocationFix, WalkEstimate } from './services/locationPrior';
 import { planDisplacement } from './services/walkTrack';
@@ -106,7 +105,6 @@ export default function App() {
   const syncState = useSyncState();
   const library = useMapLibrary({ onEdited: syncState.markEdited });
   const { map, activeMapId, updateMap } = library;
-  const tf = useTensorFlow();
 
   const [mapRotation, setMapRotation] = useLocalStorage<MapRotationPref>(
     'indoor-nav:map-rotation',
@@ -574,26 +572,22 @@ export default function App() {
           onManageMaps={() => {
             setManagerOpen(true);
           }}
-          engine={tf.engine}
-          modelStatus={tf.status}
           unsavedChanges={cloud.configured && cloud.status === 'unsaved'}
           cloudSlot={
-            mode === 'editor' ? (
-              <SyncStatus
-                configured={cloud.configured}
-                status={cloud.status}
-                dirty={!cloud.entry || cloud.entry.dirty}
-                busy={cloud.busy}
-                onPublish={() => {
-                  // Several projects and no link yet: the person picks where this map goes first.
-                  if (cloud.needsPublishChoice) setCloudOpen(true);
-                  else void cloud.publish();
-                }}
-                onOpenSettings={() => {
-                  setCloudOpen(true);
-                }}
-              />
-            ) : null
+            <SyncStatus
+              configured={cloud.configured}
+              status={cloud.status}
+              dirty={mode === 'editor' && (!cloud.entry || cloud.entry.dirty)}
+              busy={cloud.busy}
+              onPublish={() => {
+                // Several projects and no link yet: the person picks where this map goes first.
+                if (cloud.needsPublishChoice) setCloudOpen(true);
+                else void cloud.publish();
+              }}
+              onOpenSettings={() => {
+                setCloudOpen(true);
+              }}
+            />
           }
         />
       )}
