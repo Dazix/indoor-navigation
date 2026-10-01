@@ -23,6 +23,7 @@ import { useTensorFlow } from './hooks/useTensorFlow';
 import { normalizeDeg } from './services/geometry';
 import type { LocationFix, WalkEstimate } from './services/locationPrior';
 import { planDisplacement } from './services/walkTrack';
+import { isTypingTarget, toolForShortcut } from './services/editorShortcuts';
 import { corridorNear, deleteBend, deleteEdge, insertBend, moveBend } from './services/corridors';
 import { imageRatio, pickImageFile, readClipboardImage, readFloorPlanFile } from './services/imageFiles';
 import {
@@ -202,34 +203,43 @@ export default function App() {
     [map, currentLocation, destination, pdr.distanceM],
   );
 
-  // Ctrl/Cmd+Z undoes, Ctrl/Cmd+Shift+Z or Ctrl+Y redoes; text fields keep their own undo.
+  const changeTool = useCallback((next: EditorTool) => {
+    setTool(next);
+    setLinkFromId(null);
+    setMeasure([]);
+    if (next !== 'select') setSelectedNodeId(null);
+  }, []);
+
+  // Editor keys: Ctrl/Cmd+Z undoes, Ctrl/Cmd+Shift+Z or Ctrl+Y redoes, S/A/C/D/M pick a tool.
+  // Text fields keep their own undo and receive all letters.
   const { undo, redo } = library;
   useEffect(() => {
     if (mode !== 'editor') return;
     const onKey = (e: KeyboardEvent) => {
-      if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
-      const target = e.target;
-      if (
-        target instanceof HTMLElement &&
-        (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName))
-      ) {
+      if (e.repeat || isTypingTarget(e.target as HTMLElement | null)) return;
+      const key = e.key.toLowerCase();
+      if ((e.ctrlKey || e.metaKey) && !e.altKey) {
+        if (key === 'z') {
+          e.preventDefault();
+          if (e.shiftKey) redo();
+          else undo();
+        } else if (key === 'y' && !e.shiftKey) {
+          e.preventDefault();
+          redo();
+        }
         return;
       }
-      const key = e.key.toLowerCase();
-      if (key === 'z') {
+      const next = toolForShortcut(e);
+      if (next) {
         e.preventDefault();
-        if (e.shiftKey) redo();
-        else undo();
-      } else if (key === 'y' && !e.shiftKey) {
-        e.preventDefault();
-        redo();
+        changeTool(next);
       }
     };
     window.addEventListener('keydown', onKey);
     return () => {
       window.removeEventListener('keydown', onKey);
     };
-  }, [mode, undo, redo]);
+  }, [mode, undo, redo, changeTool]);
 
   useEffect(() => {
     if (!notice) return;
@@ -372,13 +382,6 @@ export default function App() {
   };
 
   // ---- Editor ---------------------------------------------------------------------------------
-
-  const changeTool = (next: EditorTool) => {
-    setTool(next);
-    setLinkFromId(null);
-    setMeasure([]);
-    if (next !== 'select') setSelectedNodeId(null);
-  };
 
   /** Adds an end of the measured line; a third tap starts a new line. */
   const addMeasurePoint = (point: Point) => {
