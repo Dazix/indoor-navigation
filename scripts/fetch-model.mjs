@@ -12,7 +12,7 @@ const MODELS = {
     url: (name) =>
       `https://tfhub.dev/google/imagenet/mobilenet_v2_050_224/classification/2/${name}?tfjs-format=file`,
   },
-  // TF Hub no longer serves this one; the tfjs-models bucket does.
+  // Served by the tfjs-models bucket, without redirects.
   '1.0': {
     dir: 'mobilenet_v2_100',
     url: (name) => `https://storage.googleapis.com/tfjs-models/savedmodel/mobilenet_v2_1.0_224/${name}`,
