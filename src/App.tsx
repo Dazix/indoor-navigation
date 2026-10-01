@@ -63,6 +63,7 @@ const ARCanvas = lazy(() => import('./components/ar/ARCanvas'));
 const VisionScannerModal = lazy(() => import('./components/scanner/VisionScannerModal'));
 const WalkthroughModal = lazy(() => import('./components/editor/WalkthroughModal'));
 const RecognitionQualityModal = lazy(() => import('./components/editor/RecognitionQualityModal'));
+const VersionModal = lazy(() => import('./components/ui/VersionModal'));
 const P2PTransferModal = lazy(() => import('./components/maps/P2PTransferModal'));
 
 type Notice = { tone: 'error' | 'info'; text: string };
@@ -122,6 +123,7 @@ export default function App() {
   const [walkthroughOpen, setWalkthroughOpen] = useState(false);
   const [qualityOpen, setQualityOpen] = useState(false);
   const [managerOpen, setManagerOpen] = useState(false);
+  const [versionOpen, setVersionOpen] = useState(false);
   const [shareLinkOpen, setShareLinkOpen] = useState(false);
   const [notice, setNotice] = useState<Notice | null>(() =>
     INITIAL_CLOUD_LINK_INVALID
@@ -573,6 +575,9 @@ export default function App() {
             setManagerOpen(true);
           }}
           unsavedChanges={cloud.configured && cloud.status === 'unsaved'}
+          onLogoLongPress={() => {
+            setVersionOpen(true);
+          }}
           cloudSlot={
             <SyncStatus
               configured={cloud.configured}
@@ -901,6 +906,14 @@ export default function App() {
             }}
             onSave={(id, samples) => {
               updateMap((m) => setEmbeddings(m, id, samples));
+            }}
+          />
+        )}
+        {versionOpen && (
+          <VersionModal
+            map={map}
+            onClose={() => {
+              setVersionOpen(false);
             }}
           />
         )}

@@ -1,5 +1,6 @@
 import { ChevronDown, Layers, MapPinned, Navigation, PencilRuler } from 'lucide-react';
 import type { ReactNode } from 'react';
+import { useLongPress } from '../../hooks/useLongPress';
 import type { MapSummary } from '../../types/map';
 import type { AppMode } from '../../types/navigation';
 
@@ -14,6 +15,8 @@ interface HeaderProps {
   cloudSlot?: ReactNode;
   /** Local edits not yet in the cloud; shown as a dot on the Editor tab. */
   unsavedChanges?: boolean;
+  /** Long press on the logo, opens the build info. */
+  onLogoLongPress?: () => void;
 }
 
 export function Header({
@@ -25,14 +28,22 @@ export function Header({
   onManageMaps,
   cloudSlot,
   unsavedChanges = false,
+  onLogoLongPress,
 }: HeaderProps) {
   const sorted = [...maps].sort((a, b) => a.name.localeCompare(b.name));
+  const { handlers: logoPress } = useLongPress(() => {
+    onLogoLongPress?.();
+  });
 
   return (
     <header className="pt-safe px-safe z-20 border-b border-slate-800 bg-slate-900 text-white">
       <div className="flex h-14 items-center justify-between gap-2 px-3 sm:px-4">
         <div className="flex min-w-0 items-center gap-2.5">
-          <div className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-gradient-to-tr from-brand-600 to-brand-400 shadow-md">
+          <div
+            {...logoPress}
+            title="Hold for build info"
+            className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-gradient-to-tr from-brand-600 to-brand-400 shadow-md select-none [-webkit-touch-callout:none]"
+          >
             <MapPinned className="size-4.5" />
           </div>
           <div className="min-w-0">

@@ -42,6 +42,7 @@ Key conventions and gotchas:
 - Any change to the persisted map shape must update the Zod schemas in `mapStorage.ts`. They gate imports, share links and P2P transfers.
 - TensorFlow.js is a lazily loaded chunk that only loads when the camera or scanner is used. Keep it out of the main bundle. MobileNet weights are vendored in `public/models/` (`npm run fetch-model` re-downloads them) and cached at runtime by the service worker rather than precached.
 - Deployment base path: `vite.config.ts` sets `base` to `/<repo>/` only when `GITHUB_PAGES` is set, otherwise `/`. Use Vite-aware paths for assets, not hardcoded absolute URLs.
+- Versioning: `package.json` version is a placeholder. semantic-release (`.releaserc.json`, runs in `deploy.yml` before the build, no `@semantic-release/git`) tags `main` from conventional commits, so commit messages must use `feat:` / `fix:` / `perf:` prefixes to release anything. `vite.config.ts` injects `__APP_VERSION__` (`git describe --tags --always`, `dev` without git), `__APP_COMMIT__` and `__APP_BUILD_TIME__` via `define`, and sets the Workbox `cacheId` to `indoor-nav-<version>` so the precache name reveals the service worker's build. `VersionModal` (long press on the header logo) shows all of it; formatting logic is in `services/buildInfo.ts`.
 - Camera and motion sensors need a secure context, so use `npm run dev:host` for phone testing.
 - `public/default-map.json` is the sample map loaded on first start. `public/maps/*.json` are maps that can be loaded through `?map=<path>`.
 

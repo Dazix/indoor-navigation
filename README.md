@@ -98,6 +98,19 @@ after a tap.
 The build sets `base` to `/<repository-name>/` when `GITHUB_PAGES` is set, so assets, the service worker and
 the model load correctly from the Pages sub-path. Locally the base is `/`.
 
+### Versions
+
+Versions are released automatically by [semantic-release](https://semantic-release.gitbook.io) on every push
+to `main`, from [conventional commits](https://www.conventionalcommits.org): `fix:` bumps the patch version,
+`feat:` the minor version, `feat!:` or a `BREAKING CHANGE:` footer the major version. Other prefixes release
+nothing. The release only creates a git tag and a GitHub Release; `package.json` keeps its placeholder
+version. The build takes the version from `git describe --tags`.
+
+To see which build runs on a device, press and hold the logo in the header. The dialog shows the version,
+commit, build time, the version of the service worker, the embedding engine and how many learned views have
+left/right tiles, with a button to copy it all into a bug report. After a deploy the installed app may run
+the old build for a moment, so the service worker version is shown separately.
+
 ## Mapping an office in the Editor
 
 1. **Create a map.** Open the maps menu (layers icon next to the map name) and click **Create**, starting
