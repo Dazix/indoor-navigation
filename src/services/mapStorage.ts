@@ -13,6 +13,7 @@ const EmbeddingSampleSchema = z.object({
   vector: z.array(z.number()).min(1).max(4096),
   timestamp: z.number(),
   headingDeg: z.number().min(0).max(360).optional(),
+  tiles: z.array(z.array(z.number()).min(1).max(1024)).min(1).max(4).optional(),
 });
 
 const MapNodeSchema = z.object({

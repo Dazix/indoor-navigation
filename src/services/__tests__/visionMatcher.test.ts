@@ -10,6 +10,7 @@ import {
   HEADING_MIN_FACTOR,
   headingFactor,
   meanEmbedding,
+  meanTileEmbeddings,
   pickAutoMatch,
   rankMatches,
 } from '../visionMatcher';
@@ -230,5 +231,80 @@ describe('meanEmbedding and centred ranking', () => {
 
   it('falls back to plain cosine when the centre has another length', () => {
     expect(centeredCosineSimilarity([1, 0], [1, 0], [0, 0, 0])).toBe(1);
+  });
+});
+
+describe('tile-aware ranking', () => {
+  /** A view with a whole-frame vector and left/right tile vectors. */
+  function tiled(id: string, vector: number[], tiles: number[][]): MapNode {
+    const node = trained(id, [vector]);
+    return { ...node, embeddings: node.embeddings.map((s) => ({ ...s, tiles })) };
+  }
+
+  // Two rooms mirrored left to right: the whole frame looks the same, the halves swap.
+  const window = [1, 0, 0];
+  const tv = [0, 1, 0];
+  const whole = [0.7, 0.7, 0.1];
+  const rooms = {
+    windowRight: tiled('windowRight', whole, [tv, window]),
+    windowLeft: tiled('windowLeft', whole, [window, tv]),
+  };
+
+  it('ties mirrored rooms on the whole frame alone', () => {
+    const scores = rankMatches(whole, rooms).map((r) => r.score);
+    expect(scores[0]).toBe(scores[1]);
+  });
+
+  it('tells mirrored rooms apart when tiles are given', () => {
+    const ranked = rankMatches(whole, rooms, { tiles: [window, tv] });
+    expect(ranked[0]?.node.id).toBe('windowLeft');
+    expect((ranked[0]?.score ?? 0) - (ranked[1]?.score ?? 100)).toBeGreaterThan(15);
+  });
+
+  it('uses the whole frame only when the live or stored tiles are missing or do not fit', () => {
+    const plain = rankMatches(whole, rooms).map((r) => r.score);
+    expect(rankMatches(whole, rooms, { tiles: null }).map((r) => r.score)).toEqual(plain);
+    expect(rankMatches(whole, rooms, { tiles: [[1, 0]] }).map((r) => r.score)).toEqual(plain);
+    expect(
+      rankMatches(whole, rooms, {
+        tiles: [
+          [1, 0],
+          [0, 1],
+        ],
+      }).map((r) => r.score),
+    ).toEqual(plain);
+    const old = { a: trained('a', [whole]) };
+    expect(rankMatches(whole, old, { tiles: [window, tv] })[0]?.score).toBe(100);
+  });
+});
+
+describe('meanTileEmbeddings', () => {
+  const nodes = {
+    a: tiledNode('a', [
+      [2, 0],
+      [0, 2],
+    ]),
+    b: tiledNode('b', [
+      [0, 2],
+      [2, 0],
+    ]),
+    old: trained('old', [[1, 0]]),
+  };
+
+  function tiledNode(id: string, tiles: number[][]): MapNode {
+    const node = trained(id, [[1, 0]]);
+    return { ...node, embeddings: node.embeddings.map((s) => ({ ...s, tiles })) };
+  }
+
+  it('averages each tile position over the views that have tiles', () => {
+    expect(meanTileEmbeddings(nodes, 2)).toEqual([
+      [1, 1],
+      [1, 1],
+    ]);
+  });
+
+  it('is null when no view has tiles of that size', () => {
+    expect(meanTileEmbeddings(nodes, 5)).toBeNull();
+    expect(meanTileEmbeddings({ old: nodes.old }, 2)).toBeNull();
   });
 });

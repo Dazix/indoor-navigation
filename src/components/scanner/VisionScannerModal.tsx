@@ -9,9 +9,11 @@ import {
   isFrameReady,
   isTrained,
   meanEmbedding,
+  meanTileEmbeddings,
   pickAutoMatch,
   rankMatches,
 } from '../../services/visionMatcher';
+import { pushFrame, smoothMatches } from '../../services/scoreSmoothing';
 import { proximityBoosts, type LocationFix, type WalkEstimate } from '../../services/locationPrior';
 import type { MapData } from '../../types/map';
 import type { MatchResult } from '../../types/vision';
@@ -35,9 +37,14 @@ type Tab = 'visual' | 'code';
 
 const SCAN_INTERVAL_MS = 700;
 const MIN_SCORE = 30;
-/** Score needed for automatic relocalization, and on how many consecutive frames. */
+/** The ranking is averaged over this many latest frames; nothing is confirmed before the window is full. */
+const SMOOTH_FRAMES = 3;
+/** Places kept per frame before averaging, so a place just outside the top list is not counted as 0. */
+const FRAME_CANDIDATES = 8;
+const RESULT_COUNT = 4;
+/** Smoothed score needed for automatic relocalization, and on how many consecutive frames. */
 const AUTO_SCORE = 80;
-const AUTO_FRAMES = 2;
+const AUTO_FRAMES = 1;
 /** Ranking lead (percent points) over the runner-up needed for automatic relocalization. */
 const AUTO_MARGIN = 8;
 
@@ -75,11 +82,23 @@ export default function VisionScannerModal({
   const barcodeSupported = typeof window !== 'undefined' && 'BarcodeDetector' in window;
   // Removing what all views of the map share lets places in a uniform room be told apart.
   const center = useMemo(() => meanEmbedding(map.nodes), [map.nodes]);
+  const tileCenters = useMemo(() => meanTileEmbeddings(map.nodes), [map.nodes]);
 
   // Latest values for the scan loop, which must not restart on every render.
-  const latest = useRef({ map, onDetected, onClose, tab, embed, lastFix, center, heading, walk });
+  const latest = useRef({
+    map,
+    onDetected,
+    onClose,
+    tab,
+    embed,
+    lastFix,
+    center,
+    tileCenters,
+    heading,
+    walk,
+  });
   useEffect(() => {
-    latest.current = { map, onDetected, onClose, tab, embed, lastFix, center, heading, walk };
+    latest.current = { map, onDetected, onClose, tab, embed, lastFix, center, tileCenters, heading, walk };
   });
 
   const detectedRef = useRef(false);
@@ -109,6 +128,7 @@ export default function VisionScannerModal({
       : null;
     let busy = false;
     let streak: { id: string; frames: number } | null = null;
+    let history: MatchResult[][] = [];
 
     const timer = setInterval(() => {
       const video = videoRef.current;
@@ -120,22 +140,31 @@ export default function VisionScannerModal({
         embed,
         lastFix: fix,
         center: mean,
+        tileCenters: tileMeans,
         heading: liveHeading,
         walk: liveWalk,
       } = latest.current;
 
       const scan = async () => {
         if (currentTab === 'visual') {
-          const { vector } = await embed(video);
-          const ranked = rankMatches(vector, currentMap.nodes, {
+          const { vector, tiles } = await embed(video);
+          const frame = rankMatches(vector, currentMap.nodes, {
             minScore: MIN_SCORE,
-            limit: 4,
+            limit: FRAME_CANDIDATES,
             boosts: proximityBoosts(currentMap, fix, Date.now(), liveWalk),
             center: mean,
+            tiles,
+            tileCenters: tileMeans,
             heading: liveHeading,
           });
+          // One frame of a uniform room can jump to a look-alike place; judge the last few together.
+          history = pushFrame(history, frame, SMOOTH_FRAMES);
+          const ranked = smoothMatches(history, RESULT_COUNT);
           setResults(ranked);
-          const top = pickAutoMatch(ranked, { minScore: AUTO_SCORE, minMargin: AUTO_MARGIN });
+          const top =
+            history.length < SMOOTH_FRAMES
+              ? null
+              : pickAutoMatch(ranked, { minScore: AUTO_SCORE, minMargin: AUTO_MARGIN });
           // Strong match that similar-looking places compete with: let the user choose.
           setAmbiguous(!top && (ranked[0]?.score ?? 0) >= AUTO_SCORE);
           if (top) {

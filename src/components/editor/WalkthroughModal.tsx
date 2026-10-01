@@ -84,11 +84,11 @@ export default function WalkthroughModal({ node, onClose, onSave }: WalkthroughM
     try {
       const thumbnail = captureThumbnail(video);
       const headingDeg = headingRef.current === null ? undefined : Math.round(headingRef.current) % 360;
-      const { vector } = await embed(video);
+      const { vector, tiles } = await embed(video);
       setSamples((prev) =>
         prev.length >= MAX_SAMPLES
           ? prev
-          : [...prev, { id: sampleId(), thumbnail, vector, timestamp: Date.now(), headingDeg }],
+          : [...prev, { id: sampleId(), thumbnail, vector, tiles, timestamp: Date.now(), headingDeg }],
       );
     } finally {
       busy.current = false;

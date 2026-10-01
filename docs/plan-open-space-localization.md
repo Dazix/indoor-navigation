@@ -57,12 +57,12 @@ Proč to v open space selhává:
 
 ### 5. Časové vyhlazení
 
-- [ ] Průměrovat skóre uzlů přes posledních N snímků (klouzavé okno) v `VisionScannerModal` / nové
+- [x] Průměrovat skóre uzlů přes posledních N snímků (klouzavé okno) v `VisionScannerModal` / nové
       čisté funkci v `services/`, potvrzovat na vyhlazených skóre
 
 ### 6. Silnější příznaky (jen pokud 2–5 nestačí)
 
-- [ ] Prostorové dlaždice (např. 2×2 embedding + globální) místo jednoho vektoru; zachová rozložení scény
+- [x] Prostorové dlaždice (např. 2×2 embedding + globální) místo jednoho vektoru; zachová rozložení scény
 - [ ] Případně větší model (alpha 1.0) – pozor na velikost a načítání, TF.js musí zůstat v lazy chunku
 
 ### 7. Ne-softwarová složka

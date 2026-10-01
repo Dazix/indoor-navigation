@@ -1,5 +1,5 @@
 import type { MapNode } from '../types/map';
-import { meanEmbedding, rankMatches } from './visionMatcher';
+import { meanEmbedding, meanTileEmbeddings, rankMatches } from './visionMatcher';
 
 export interface ConfusedPair {
   /** Node whose held-out view was being recognised. */
@@ -38,6 +38,7 @@ export function analyzeConfusability(
   { centered = true }: ConfusabilityOptions = {},
 ): ConfusabilityReport {
   const center = centered ? meanEmbedding(nodes) : null;
+  const tileCenters = centered ? meanTileEmbeddings(nodes) : null;
   const pairs = new Map<string, ConfusedPair>();
   let total = 0;
   let correct = 0;
@@ -58,6 +59,8 @@ export function analyzeConfusability(
         limit: 2,
         center,
         heading: sample.headingDeg,
+        tiles: sample.tiles,
+        tileCenters,
       });
       total++;
       marginSum += top ? top.score - (second?.score ?? 0) : 0;
