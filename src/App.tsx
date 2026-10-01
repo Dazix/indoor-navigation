@@ -43,6 +43,8 @@ import {
   updateMetadata,
   updateNode,
 } from './services/mapEditing';
+import { resolveEmbeddingModel } from './services/embeddingModels';
+import { withEmbeddingModel } from './services/modelSwitch';
 import {
   exportMapToFile,
   fetchSharedMap,
@@ -64,6 +66,7 @@ const ARCanvas = lazy(() => import('./components/ar/ARCanvas'));
 const VisionScannerModal = lazy(() => import('./components/scanner/VisionScannerModal'));
 const WalkthroughModal = lazy(() => import('./components/editor/WalkthroughModal'));
 const RecognitionQualityModal = lazy(() => import('./components/editor/RecognitionQualityModal'));
+const RecognitionModelModal = lazy(() => import('./components/editor/RecognitionModelModal'));
 const VersionModal = lazy(() => import('./components/ui/VersionModal'));
 const P2PTransferModal = lazy(() => import('./components/maps/P2PTransferModal'));
 
@@ -123,6 +126,7 @@ export default function App() {
   const [handheld] = useState(detectHandheldDevice);
   const [walkthroughOpen, setWalkthroughOpen] = useState(false);
   const [qualityOpen, setQualityOpen] = useState(false);
+  const [modelOpen, setModelOpen] = useState(false);
   const [managerOpen, setManagerOpen] = useState(false);
   const [versionOpen, setVersionOpen] = useState(false);
   const [shareLinkOpen, setShareLinkOpen] = useState(false);
@@ -643,7 +647,12 @@ export default function App() {
               updateMap((m) => setFloorPlanFineRotation(m, deg), 'fine-rotation');
             }}
             onExport={() => {
-              void exportMapToFile(map);
+              exportMapToFile(map).catch((err: unknown) => {
+                setNotice({
+                  tone: 'error',
+                  text: err instanceof Error ? err.message : `Export failed: ${String(err)}`,
+                });
+              });
             }}
             onSendNearby={() => {
               setP2PRole('send');
@@ -679,6 +688,9 @@ export default function App() {
             }}
             onRecordWalkthrough={() => {
               setWalkthroughOpen(true);
+            }}
+            onOpenRecognitionModel={() => {
+              setModelOpen(true);
             }}
             onOpenRecognitionQuality={() => {
               setQualityOpen(true);
@@ -884,6 +896,7 @@ export default function App() {
           <WalkthroughModal
             key={selectedNode.id}
             node={selectedNode}
+            modelId={resolveEmbeddingModel(map.metadata.embeddingModel).id}
             onClose={() => {
               setWalkthroughOpen(false);
             }}
@@ -897,6 +910,21 @@ export default function App() {
             map={map}
             onClose={() => {
               setVersionOpen(false);
+            }}
+          />
+        )}
+        {modelOpen && (
+          <RecognitionModelModal
+            map={map}
+            onClose={() => {
+              setModelOpen(false);
+            }}
+            onApply={(model, views) => {
+              updateMap((m) => withEmbeddingModel(m, model, views));
+              setNotice({
+                tone: 'info',
+                text: `Recognition model switched to ${resolveEmbeddingModel(model).label}.`,
+              });
             }}
           />
         )}

@@ -52,10 +52,27 @@ export async function inlineFloorPlan(map: MapData): Promise<MapData> {
   }
 }
 
-/** Complete, self-contained JSON of a map: graph, rooms, learned views and the floor plan image. */
+/** The map is bigger than any device accepts on import, so a file or nearby transfer would be refused. */
+export class MapTooLargeError extends Error {
+  constructor(bytes: number) {
+    const mib = (n: number) => (n / (1024 * 1024)).toFixed(1);
+    super(
+      `The map is ${mib(bytes)} MiB and import accepts at most ${mib(MAX_IMPORT_BYTES)} MiB, so it cannot be exported or sent nearby. Use Cloud sync to move it between devices.`,
+    );
+    this.name = 'MapTooLargeError';
+  }
+}
+
+/**
+ * Complete, self-contained JSON of a map: graph, rooms, learned views and the floor plan image.
+ * Throws `MapTooLargeError` above the import limit, since the receiving side would reject it.
+ */
 export async function serializeMap(map: MapData): Promise<{ json: string; fileName: string }> {
   const complete = await inlineFloorPlan(map);
-  return { json: JSON.stringify(complete), fileName: mapFileName(map) };
+  const json = JSON.stringify(complete);
+  const bytes = new TextEncoder().encode(json).length;
+  if (bytes > MAX_IMPORT_BYTES) throw new MapTooLargeError(bytes);
+  return { json, fileName: mapFileName(map) };
 }
 
 // Mobile download managers read the blob URL asynchronously; revoking it right away makes Chrome on

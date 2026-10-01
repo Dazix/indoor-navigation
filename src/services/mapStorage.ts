@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type { MapData } from '../types/map';
+import { EMBEDDING_MODEL_IDS } from './embeddingModels';
 
 /** Single-map storage key used by the original prototype; migrated into the map library on first run. */
 export const LEGACY_STORAGE_KEY = 'indoor_nav_map_data_v3';
@@ -10,6 +11,7 @@ const coordinate = z.number().min(0).max(100);
 const EmbeddingSampleSchema = z.object({
   id: z.string().min(1),
   thumbnail: z.string().startsWith('data:image/'),
+  frame: z.string().startsWith('data:image/').optional(),
   vector: z.array(z.number()).min(1).max(4096),
   timestamp: z.number(),
   headingDeg: z.number().min(0).max(360).optional(),
@@ -56,6 +58,7 @@ const MapMetadataSchema = z.object({
   height: z.number().positive().max(100).default(100),
   floorPlanRotationDeg: z.number().min(-360).max(360).default(0),
   geo: GeoPointSchema.optional(),
+  embeddingModel: z.enum(EMBEDDING_MODEL_IDS).optional(),
 });
 
 /** Uploaded image (data URL), absolute http(s) URL, or an asset path relative to the app base. */

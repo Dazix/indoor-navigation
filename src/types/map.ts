@@ -1,3 +1,4 @@
+import type { EmbeddingModelId } from '../services/embeddingModels';
 import type { EmbeddingSample } from './vision';
 
 export interface Point {
@@ -48,6 +49,11 @@ export interface MapMetadata {
   floorPlanRotationDeg: number;
   /** Where the building is in the world; used to open the nearest map on start. */
   geo?: GeoPoint;
+  /**
+   * Model that computed the learned views. Vectors of different models cannot be compared, so the
+   * scanner uses this one. Missing in maps from before the choice existed, which means alpha 0.5.
+   */
+  embeddingModel?: EmbeddingModelId;
 }
 
 /** WGS84 position in degrees. */

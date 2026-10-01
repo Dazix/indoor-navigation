@@ -5,6 +5,11 @@ export interface EmbeddingSample {
   id: string;
   /** JPEG data URL, ~120x90 px. */
   thumbnail: string;
+  /**
+   * The frame the vectors were computed from (JPEG data URL, see `captureFrame`). With it the vectors
+   * can be recomputed by another model. Missing in views recorded before this existed.
+   */
+  frame?: string;
   /** L2-normalized feature vector (256-D from MobileNet, 192-D from the fallback extractor). */
   vector: number[];
   timestamp: number;

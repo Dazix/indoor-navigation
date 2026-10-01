@@ -1,6 +1,7 @@
 import {
   ClipboardPaste,
   Download,
+  Cpu,
   Gauge,
   ImageUp,
   Link,
@@ -26,6 +27,7 @@ import {
   metersPerUnitForLongSide,
 } from '../../services/mapEditing';
 import { buildNodeLink, MAP_FILE_ACCEPT } from '../../services/mapSharing';
+import { resolveEmbeddingModel } from '../../services/embeddingModels';
 import { distance } from '../../services/geometry';
 import type { GeoPoint, MapData, MapMetadata, MapNode, Point } from '../../types/map';
 import type { EditorTool } from '../../types/navigation';
@@ -59,6 +61,7 @@ interface EditorSidebarProps {
   onImport: (file: File) => void;
   onNodeChange: (patch: Partial<Pick<MapNode, 'label' | 'markerCode'>>) => void;
   onRecordWalkthrough: () => void;
+  onOpenRecognitionModel: () => void;
   onOpenRecognitionQuality: () => void;
   onClearViews: () => void;
   onDeleteNode: () => void;
@@ -326,17 +329,22 @@ export function EditorSidebar(props: EditorSidebarProps) {
         }}
       />
 
-      {Object.values(map.nodes).some((n) => n.embeddings.length > 1) && (
-        <section className="flex flex-col gap-2">
-          <h2 className={heading}>Recognition</h2>
-          <Button variant="secondary" size="sm" onClick={props.onOpenRecognitionQuality}>
-            <Gauge className="size-4" /> Check recognition quality
-          </Button>
-          <p className="text-[10px] leading-relaxed text-slate-500">
-            Shows which places the camera mixes up, for example in a large open space.
-          </p>
-        </section>
-      )}
+      <section className="flex flex-col gap-2">
+        <h2 className={heading}>Recognition</h2>
+        <Button variant="secondary" size="sm" onClick={props.onOpenRecognitionModel}>
+          <Cpu className="size-4" /> Model: {resolveEmbeddingModel(map.metadata.embeddingModel).label}
+        </Button>
+        {Object.values(map.nodes).some((n) => n.embeddings.length > 1) && (
+          <>
+            <Button variant="secondary" size="sm" onClick={props.onOpenRecognitionQuality}>
+              <Gauge className="size-4" /> Check recognition quality
+            </Button>
+            <p className="text-[10px] leading-relaxed text-slate-500">
+              Shows which places the camera mixes up, for example in a large open space.
+            </p>
+          </>
+        )}
+      </section>
 
       <section className="flex flex-col gap-2">
         <h2 className={heading}>Floor plan & data</h2>

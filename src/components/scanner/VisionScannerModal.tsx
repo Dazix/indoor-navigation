@@ -4,6 +4,7 @@ import { CAMERA_STATUS_TEXT, WIDE_CONSTRAINTS, useCamera } from '../../hooks/use
 import { CameraControls } from './CameraControls';
 import { useTensorFlow } from '../../hooks/useTensorFlow';
 import {
+  AUTO_MATCH,
   EMBEDDING_SIZE,
   findNodeByCode,
   isFrameReady,
@@ -13,6 +14,7 @@ import {
   pickAutoMatch,
   rankMatches,
 } from '../../services/visionMatcher';
+import { resolveEmbeddingModel } from '../../services/embeddingModels';
 import { pushFrame, smoothMatches } from '../../services/scoreSmoothing';
 import { proximityBoosts, type LocationFix, type WalkEstimate } from '../../services/locationPrior';
 import type { MapData } from '../../types/map';
@@ -42,11 +44,8 @@ const SMOOTH_FRAMES = 3;
 /** Places kept per frame before averaging, so a place just outside the top list is not counted as 0. */
 const FRAME_CANDIDATES = 8;
 const RESULT_COUNT = 4;
-/** Smoothed score needed for automatic relocalization, and on how many consecutive frames. */
-const AUTO_SCORE = 80;
+/** On how many consecutive frames the smoothed score must pass `AUTO_MATCH` for automatic relocalization. */
 const AUTO_FRAMES = 1;
-/** Ranking lead (percent points) over the runner-up needed for automatic relocalization. */
-const AUTO_MARGIN = 8;
 
 /** Camera-based relocalization: markerless (MobileNet embeddings) or QR / barcode markers. */
 export default function VisionScannerModal({
@@ -72,7 +71,8 @@ export default function VisionScannerModal({
     zoom,
     setZoom,
   } = useCamera(true, WIDE_CONSTRAINTS);
-  const { status: modelStatus, engine, load, embed } = useTensorFlow();
+  const modelId = resolveEmbeddingModel(map.metadata.embeddingModel).id;
+  const { status: modelStatus, engine, load, embed } = useTensorFlow(modelId);
 
   const trainedNodes = useMemo(() => Object.values(map.nodes).filter(isTrained), [map.nodes]);
   const hasMobileNetSamples = useMemo(
@@ -161,12 +161,9 @@ export default function VisionScannerModal({
           history = pushFrame(history, frame, SMOOTH_FRAMES);
           const ranked = smoothMatches(history, RESULT_COUNT);
           setResults(ranked);
-          const top =
-            history.length < SMOOTH_FRAMES
-              ? null
-              : pickAutoMatch(ranked, { minScore: AUTO_SCORE, minMargin: AUTO_MARGIN });
+          const top = history.length < SMOOTH_FRAMES ? null : pickAutoMatch(ranked, AUTO_MATCH);
           // Strong match that similar-looking places compete with: let the user choose.
-          setAmbiguous(!top && (ranked[0]?.score ?? 0) >= AUTO_SCORE);
+          setAmbiguous(!top && (ranked[0]?.score ?? 0) >= AUTO_MATCH.minScore);
           if (top) {
             streak =
               streak?.id === top.node.id
@@ -277,7 +274,9 @@ export default function VisionScannerModal({
               ) : (
                 <>
                   <span className="size-2 animate-pulse rounded-full bg-cyan-400" />
-                  {engine === 'mobilenet' ? 'MobileNet v2 embeddings' : 'Colour descriptor (fallback)'}
+                  {engine === 'mobilenet'
+                    ? resolveEmbeddingModel(modelId).label
+                    : 'Colour descriptor (fallback)'}
                 </>
               )}
             </span>
