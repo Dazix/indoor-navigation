@@ -2,6 +2,7 @@ import { Camera, Loader2, Pause, Trash2, Video } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { CAMERA_STATUS_TEXT, WIDE_CONSTRAINTS, useCamera } from '../../hooks/useCamera';
 import { CameraControls } from '../scanner/CameraControls';
+import { useLocalStorage } from '../../hooks/useLocalStorage';
 import { useOrientation } from '../../hooks/useOrientation';
 import { useTensorFlow } from '../../hooks/useTensorFlow';
 import {
@@ -13,6 +14,14 @@ import {
 } from '../../services/coverage';
 import { resolveEmbeddingModel, type EmbeddingModelId } from '../../services/embeddingModels';
 import { captureFrame, captureThumbnail, isFrameReady } from '../../services/visionMatcher';
+import {
+  CAPTURE_RATES,
+  DEFAULT_CAPTURE_RATE,
+  captureRate,
+  formatInterval,
+  parseCaptureRate,
+  type CaptureRateId,
+} from '../../services/walkthroughRate';
 import type { MapNode } from '../../types/map';
 import type { EmbeddingSample } from '../../types/vision';
 import { Button } from '../ui/Button';
@@ -26,7 +35,6 @@ interface WalkthroughModalProps {
   onSave: (nodeId: string, samples: EmbeddingSample[]) => void;
 }
 
-const SAMPLE_INTERVAL_MS = 1200;
 /** Keeps a place's footprint in storage and exports reasonable (~3 kB per sample). */
 export const MAX_SAMPLES = 60;
 
@@ -42,11 +50,18 @@ function sampleId(): string {
 
 /**
  * Walkthrough learning: while the user walks slowly through a place, a keyframe is sampled
- * every 1.2 s and stored as an embedding with a thumbnail. Mount with `key={node.id}`.
+ * every 0.7 to 2 s (user's choice) and stored as an embedding with a thumbnail. Mount with
+ * `key={node.id}`.
  */
 export default function WalkthroughModal({ node, modelId, onClose, onSave }: WalkthroughModalProps) {
   const [samples, setSamples] = useState<EmbeddingSample[]>(node.embeddings);
   const [recording, setRecording] = useState(false);
+  const [rateId, setRateId] = useLocalStorage<CaptureRateId>(
+    'indoor-nav:walkthrough-rate',
+    DEFAULT_CAPTURE_RATE,
+    parseCaptureRate,
+  );
+  const rate = captureRate(rateId);
   const {
     videoRef,
     status: cameraStatus,
@@ -102,11 +117,11 @@ export default function WalkthroughModal({ node, modelId, onClose, onSave }: Wal
 
   useEffect(() => {
     if (!recording) return;
-    const timer = setInterval(() => void capture(), SAMPLE_INTERVAL_MS);
+    const timer = setInterval(() => void capture(), rate.intervalMs);
     return () => {
       clearInterval(timer);
     };
-  }, [recording, capture]);
+  }, [recording, capture, rate.intervalMs]);
 
   // Stop automatically when the per-place limit is reached.
   if (recording && full) setRecording(false);
@@ -216,6 +231,36 @@ export default function WalkthroughModal({ node, modelId, onClose, onSave }: Wal
           Snapshot
         </Button>
       </div>
+
+      <section className="border-b border-slate-800 p-3" aria-label="Capture rate">
+        <div className="mb-1.5 flex items-center justify-between text-xs">
+          <label htmlFor="walkthrough-rate" className="font-semibold text-slate-300">
+            Capture rate: {rate.label}
+          </label>
+          <span className="font-mono text-slate-400">1 view / {formatInterval(rate.intervalMs)}</span>
+        </div>
+        <input
+          id="walkthrough-rate"
+          type="range"
+          min={0}
+          max={CAPTURE_RATES.length - 1}
+          step={1}
+          value={CAPTURE_RATES.findIndex((r) => r.id === rateId)}
+          onChange={(e) => {
+            const next = CAPTURE_RATES[Number(e.target.value)];
+            if (next) setRateId(next.id);
+          }}
+          aria-valuetext={`${rate.label}, one view every ${formatInterval(rate.intervalMs)}`}
+          className="w-full accent-sky-500"
+        />
+        <ul className="mt-1 flex justify-between text-[11px] text-slate-500">
+          {CAPTURE_RATES.map((r) => (
+            <li key={r.id} className={r.id === rateId ? 'font-semibold text-slate-200' : undefined}>
+              {r.label} · {formatInterval(r.intervalMs)}
+            </li>
+          ))}
+        </ul>
+      </section>
 
       {coverage && (
         <section className="border-b border-slate-800 p-3" aria-label="Coverage">
