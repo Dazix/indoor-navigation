@@ -19,7 +19,15 @@ import {
   Undo2,
   Upload,
 } from 'lucide-react';
-import { useState, useRef, type ChangeEvent, type ReactNode } from 'react';
+import { useState, useRef, type ChangeEvent, type CSSProperties, type ReactNode } from 'react';
+import { useLocalStorage } from '../../hooks/useLocalStorage';
+import {
+  clampSidebarWidth,
+  parseSidebarWidth,
+  SIDEBAR_DEFAULT,
+  SIDEBAR_MAX,
+  SIDEBAR_MIN,
+} from '../../services/sidebarWidth';
 import {
   floorPlanFineDeg,
   longSideMeters,
@@ -151,6 +159,20 @@ export function EditorSidebar(props: EditorSidebarProps) {
   const { width, height, metersPerUnit } = map.metadata;
   const fineDeg = floorPlanFineDeg(map.metadata.floorPlanRotationDeg);
   const appUrl = new URL(import.meta.env.BASE_URL, window.location.origin).href;
+  const wrapper = useRef<HTMLDivElement>(null);
+  const [sidebarWidth, setSidebarWidth] = useLocalStorage(
+    'indoor-nav:editor-sidebar-width',
+    SIDEBAR_DEFAULT,
+    parseSidebarWidth,
+  );
+  // Width while dragging; committed to storage only when the pointer is released.
+  const [liveWidth, setLiveWidth] = useState<number | null>(null);
+
+  const endDrag = () => {
+    document.body.style.userSelect = '';
+    if (liveWidth !== null) setSidebarWidth(liveWidth);
+    setLiveWidth(null);
+  };
 
   const pickFile = (e: ChangeEvent<HTMLInputElement>, handler: (file: File) => void) => {
     const file = e.target.files?.[0];
@@ -159,365 +181,405 @@ export function EditorSidebar(props: EditorSidebarProps) {
   };
 
   return (
-    <aside className="z-10 flex max-h-[45dvh] w-full shrink-0 flex-col gap-4 overflow-x-hidden overflow-y-auto border-b border-slate-200 bg-white p-4 shadow-lg md:max-h-none md:w-80 md:border-r md:border-b-0 dark:border-slate-800 dark:bg-slate-900">
-      {Object.keys(map.nodes).length > 0 && (
-        <LocationSearch
-          map={map}
-          mapId={props.mapId}
-          placeholder="Find a location"
-          onPick={props.onFindNode}
-        />
-      )}
+    <div
+      ref={wrapper}
+      className="relative z-10 flex max-h-[45dvh] w-full shrink-0 flex-col md:max-h-none md:w-[var(--sidebar-w)]"
+      style={{ '--sidebar-w': `${liveWidth ?? sidebarWidth}px` } as CSSProperties}
+    >
+      <aside className="scrollbar-themed flex min-h-0 w-full flex-1 flex-col gap-4 overflow-x-hidden overflow-y-auto border-b border-slate-200 bg-white p-4 shadow-lg md:border-r md:border-b-0 dark:border-slate-800 dark:bg-slate-900">
+        {Object.keys(map.nodes).length > 0 && (
+          <LocationSearch
+            map={map}
+            mapId={props.mapId}
+            placeholder="Find a location"
+            onPick={props.onFindNode}
+          />
+        )}
 
-      <section>
-        <div className="mb-2 flex items-center justify-between">
-          <h2 className={heading.replace('mb-2 ', '')}>Tools</h2>
-          <div className="flex gap-1">
-            <HistoryButton
-              label="Undo"
-              shortcut="Ctrl+Z"
-              icon={<Undo2 className="size-4" />}
-              disabled={!props.canUndo}
-              onClick={props.onUndo}
+        <section>
+          <div className="mb-2 flex items-center justify-between">
+            <h2 className={heading.replace('mb-2 ', '')}>Tools</h2>
+            <div className="flex gap-1">
+              <HistoryButton
+                label="Undo"
+                shortcut="Ctrl+Z"
+                icon={<Undo2 className="size-4" />}
+                disabled={!props.canUndo}
+                onClick={props.onUndo}
+              />
+              <HistoryButton
+                label="Redo"
+                shortcut="Ctrl+Shift+Z"
+                icon={<Redo2 className="size-4" />}
+                disabled={!props.canRedo}
+                onClick={props.onRedo}
+              />
+            </div>
+          </div>
+          <div
+            className="grid grid-cols-5 gap-1 rounded-xl bg-slate-100 p-1 dark:bg-slate-800"
+            role="toolbar"
+          >
+            {TOOLS.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                aria-pressed={tool === t.id}
+                aria-keyshortcuts={t.key}
+                title={`${t.label} (${t.key})`}
+                onClick={() => {
+                  onToolChange(t.id);
+                }}
+                className={`flex flex-col items-center gap-0.5 rounded-lg py-1.5 text-[11px] font-semibold ${
+                  tool === t.id
+                    ? `bg-white shadow-sm dark:bg-slate-700 ${t.id === 'delete' ? 'text-red-600' : 'text-brand-600 dark:text-brand-300'}`
+                    : 'text-slate-600 dark:text-slate-400'
+                }`}
+              >
+                {t.icon}
+                <span>
+                  <u className="no-underline md:underline md:underline-offset-2">{t.label.charAt(0)}</u>
+                  {t.label.slice(1)}
+                </span>
+              </button>
+            ))}
+          </div>
+          <p className="mt-2 text-[11px] text-slate-500">
+            {tool === 'link_nodes' && linkFrom
+              ? `Connecting from “${linkFrom.label}” — tap the second location.`
+              : activeTool?.hint}
+          </p>
+          {tool === 'measure' && (
+            <MeasurePanel
+              line={props.measureLine}
+              metersPerUnit={metersPerUnit}
+              onApply={props.onApplyMeasure}
+              onClear={props.onClearMeasure}
             />
-            <HistoryButton
-              label="Redo"
-              shortcut="Ctrl+Shift+Z"
-              icon={<Redo2 className="size-4" />}
-              disabled={!props.canRedo}
-              onClick={props.onRedo}
+          )}
+          <p className="mt-1 text-[10px] text-slate-500">
+            Scroll or pinch to zoom, drag an empty spot to pan. Zoomed in, points snap more finely.
+          </p>
+        </section>
+
+        {selectedNode && (
+          <NodeDetailsCard
+            node={selectedNode}
+            onChange={props.onNodeChange}
+            onRecord={props.onRecordWalkthrough}
+            onClearViews={props.onClearViews}
+            onDelete={props.onDeleteNode}
+            onClose={props.onDeselect}
+            link={buildNodeLink(appUrl, selectedNode.id, props.mapSourceUrl)}
+            linkHasMap={Boolean(props.mapSourceUrl)}
+          />
+        )}
+
+        <section className="flex flex-col gap-2">
+          <h2 className={heading}>Map settings</h2>
+          <label className="flex min-w-0 flex-col gap-1 text-[11px] font-semibold text-slate-600 dark:text-slate-400">
+            Name
+            <input
+              className={input}
+              value={map.metadata.name}
+              maxLength={200}
+              onChange={(e) => {
+                props.onMetadataChange({ name: e.target.value });
+              }}
+            />
+          </label>
+          <div className="grid grid-cols-2 gap-2">
+            <label className="flex min-w-0 flex-col gap-1 text-[11px] font-semibold text-slate-600 dark:text-slate-400">
+              Scale (m / unit)
+              <input
+                className={input}
+                type="number"
+                inputMode="decimal"
+                min={0.01}
+                max={100}
+                step={0.01}
+                value={Math.round(map.metadata.metersPerUnit * 10000) / 10000}
+                onChange={(e) => {
+                  const v = e.target.valueAsNumber;
+                  if (v > 0 && v <= 100) props.onMetadataChange({ metersPerUnit: v });
+                }}
+              />
+            </label>
+            <label className="flex min-w-0 flex-col gap-1 text-[11px] font-semibold text-slate-600 dark:text-slate-400">
+              Plan faces (° from N)
+              <input
+                className={input}
+                type="number"
+                inputMode="numeric"
+                min={0}
+                max={359}
+                step={1}
+                value={map.metadata.northOffsetDeg}
+                onChange={(e) => {
+                  const v = e.target.valueAsNumber;
+                  if (Number.isFinite(v)) props.onMetadataChange({ northOffsetDeg: ((v % 360) + 360) % 360 });
+                }}
+              />
+            </label>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <label className="flex min-w-0 flex-col gap-1 text-[11px] font-semibold text-slate-600 dark:text-slate-400">
+              Longer side (m)
+              <input
+                className={input}
+                type="number"
+                inputMode="decimal"
+                min={0.1}
+                step={0.1}
+                value={Math.round(longSideMeters(map.metadata) * 100) / 100}
+                onChange={(e) => {
+                  const mpu = metersPerUnitForLongSide(map.metadata, e.target.valueAsNumber);
+                  if (mpu > 0 && mpu <= 100) props.onMetadataChange({ metersPerUnit: mpu });
+                }}
+              />
+            </label>
+            <AspectInput
+              width={map.metadata.width}
+              height={map.metadata.height}
+              onChange={props.onAspectChange}
             />
           </div>
-        </div>
-        <div className="grid grid-cols-5 gap-1 rounded-xl bg-slate-100 p-1 dark:bg-slate-800" role="toolbar">
-          {TOOLS.map((t) => (
-            <button
-              key={t.id}
-              type="button"
-              aria-pressed={tool === t.id}
-              aria-keyshortcuts={t.key}
-              title={`${t.label} (${t.key})`}
-              onClick={() => {
-                onToolChange(t.id);
-              }}
-              className={`flex flex-col items-center gap-0.5 rounded-lg py-1.5 text-[11px] font-semibold ${
-                tool === t.id
-                  ? `bg-white shadow-sm dark:bg-slate-700 ${t.id === 'delete' ? 'text-red-600' : 'text-brand-600 dark:text-brand-300'}`
-                  : 'text-slate-600 dark:text-slate-400'
-              }`}
-            >
-              {t.icon}
-              <span>
-                <u className="no-underline md:underline md:underline-offset-2">{t.label.charAt(0)}</u>
-                {t.label.slice(1)}
-              </span>
-            </button>
-          ))}
-        </div>
-        <p className="mt-2 text-[11px] text-slate-500">
-          {tool === 'link_nodes' && linkFrom
-            ? `Connecting from “${linkFrom.label}” — tap the second location.`
-            : activeTool?.hint}
-        </p>
-        {tool === 'measure' && (
-          <MeasurePanel
-            line={props.measureLine}
-            metersPerUnit={metersPerUnit}
-            onApply={props.onApplyMeasure}
-            onClear={props.onClearMeasure}
-          />
-        )}
-        <p className="mt-1 text-[10px] text-slate-500">
-          Scroll or pinch to zoom, drag an empty spot to pan. Zoomed in, points snap more finely.
-        </p>
-      </section>
+          <p className="text-[10px] leading-relaxed text-slate-500">
+            The map is {formatNumber(width)} × {formatNumber(height)} units ={' '}
+            {formatNumber(width * metersPerUnit)} × {formatNumber(height * metersPerUnit)} m. Enter the real
+            length of the plan’s longer side and the scale follows. “Plan faces” is the compass heading you
+            look at when facing the top of the floor plan; the AR arrow uses it.
+          </p>
+        </section>
 
-      {selectedNode && (
-        <NodeDetailsCard
-          node={selectedNode}
-          onChange={props.onNodeChange}
-          onRecord={props.onRecordWalkthrough}
-          onClearViews={props.onClearViews}
-          onDelete={props.onDeleteNode}
-          onClose={props.onDeselect}
-          link={buildNodeLink(appUrl, selectedNode.id, props.mapSourceUrl)}
-          linkHasMap={Boolean(props.mapSourceUrl)}
-        />
-      )}
-
-      <section className="flex flex-col gap-2">
-        <h2 className={heading}>Map settings</h2>
-        <label className="flex min-w-0 flex-col gap-1 text-[11px] font-semibold text-slate-600 dark:text-slate-400">
-          Name
-          <input
-            className={input}
-            value={map.metadata.name}
-            maxLength={200}
-            onChange={(e) => {
-              props.onMetadataChange({ name: e.target.value });
-            }}
-          />
-        </label>
-        <div className="grid grid-cols-2 gap-2">
-          <label className="flex min-w-0 flex-col gap-1 text-[11px] font-semibold text-slate-600 dark:text-slate-400">
-            Scale (m / unit)
-            <input
-              className={input}
-              type="number"
-              inputMode="decimal"
-              min={0.01}
-              max={100}
-              step={0.01}
-              value={Math.round(map.metadata.metersPerUnit * 10000) / 10000}
-              onChange={(e) => {
-                const v = e.target.valueAsNumber;
-                if (v > 0 && v <= 100) props.onMetadataChange({ metersPerUnit: v });
-              }}
-            />
-          </label>
-          <label className="flex min-w-0 flex-col gap-1 text-[11px] font-semibold text-slate-600 dark:text-slate-400">
-            Plan faces (° from N)
-            <input
-              className={input}
-              type="number"
-              inputMode="numeric"
-              min={0}
-              max={359}
-              step={1}
-              value={map.metadata.northOffsetDeg}
-              onChange={(e) => {
-                const v = e.target.valueAsNumber;
-                if (Number.isFinite(v)) props.onMetadataChange({ northOffsetDeg: ((v % 360) + 360) % 360 });
-              }}
-            />
-          </label>
-        </div>
-        <div className="grid grid-cols-2 gap-2">
-          <label className="flex min-w-0 flex-col gap-1 text-[11px] font-semibold text-slate-600 dark:text-slate-400">
-            Longer side (m)
-            <input
-              className={input}
-              type="number"
-              inputMode="decimal"
-              min={0.1}
-              step={0.1}
-              value={Math.round(longSideMeters(map.metadata) * 100) / 100}
-              onChange={(e) => {
-                const mpu = metersPerUnitForLongSide(map.metadata, e.target.valueAsNumber);
-                if (mpu > 0 && mpu <= 100) props.onMetadataChange({ metersPerUnit: mpu });
-              }}
-            />
-          </label>
-          <AspectInput
-            width={map.metadata.width}
-            height={map.metadata.height}
-            onChange={props.onAspectChange}
-          />
-        </div>
-        <p className="text-[10px] leading-relaxed text-slate-500">
-          The map is {formatNumber(width)} × {formatNumber(height)} units ={' '}
-          {formatNumber(width * metersPerUnit)} × {formatNumber(height * metersPerUnit)} m. Enter the real
-          length of the plan’s longer side and the scale follows. “Plan faces” is the compass heading you look
-          at when facing the top of the floor plan; the AR arrow uses it.
-        </p>
-      </section>
-
-      <GeoSection
-        geo={map.metadata.geo}
-        onChange={(geo) => {
-          props.onMetadataChange({ geo });
-        }}
-      />
-
-      <section className="flex flex-col gap-2">
-        <h2 className={heading}>Recognition</h2>
-        <Button variant="secondary" size="sm" onClick={props.onOpenRecognitionModel}>
-          <Cpu className="size-4" /> Model: {resolveEmbeddingModel(map.metadata.embeddingModel).label}
-        </Button>
-        {Object.values(map.nodes).some((n) => n.embeddings.length > 1) && (
-          <>
-            <Button variant="secondary" size="sm" onClick={props.onOpenRecognitionQuality}>
-              <Gauge className="size-4" /> Check recognition quality
-            </Button>
-            <p className="text-[10px] leading-relaxed text-slate-500">
-              Shows which places the camera mixes up, for example in a large open space.
-            </p>
-          </>
-        )}
-      </section>
-
-      <section className="flex flex-col gap-2">
-        <h2 className={heading}>Floor plan & data</h2>
-        <input
-          ref={planInput}
-          type="file"
-          accept="image/*"
-          className="hidden"
-          onChange={(e) => {
-            pickFile(e, props.onFloorPlanUpload);
+        <GeoSection
+          geo={map.metadata.geo}
+          onChange={(geo) => {
+            props.onMetadataChange({ geo });
           }}
         />
-        <div className="flex gap-2">
-          <Button
-            variant="secondary"
-            size="sm"
-            fullWidth
-            icon={<ImageUp className="size-4" />}
-            onClick={() => planInput.current?.click()}
-          >
-            {map.floorPlanImage ? 'Replace floor plan' : 'Upload floor plan'}
+
+        <section className="flex flex-col gap-2">
+          <h2 className={heading}>Recognition</h2>
+          <Button variant="secondary" size="sm" onClick={props.onOpenRecognitionModel}>
+            <Cpu className="size-4" /> Model: {resolveEmbeddingModel(map.metadata.embeddingModel).label}
           </Button>
-          <Button
-            variant="secondary"
-            size="sm"
-            icon={<ClipboardPaste className="size-4" />}
-            onClick={props.onFloorPlanPaste}
-            title="Paste an image from the clipboard (or press Ctrl+V / ⌘V)"
-          >
-            Paste
-          </Button>
-          {map.floorPlanImage && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={props.onFloorPlanRemove}
-              aria-label="Remove floor plan"
-            >
-              <Trash2 className="size-4" />
-            </Button>
+          {Object.values(map.nodes).some((n) => n.embeddings.length > 1) && (
+            <>
+              <Button variant="secondary" size="sm" onClick={props.onOpenRecognitionQuality}>
+                <Gauge className="size-4" /> Check recognition quality
+              </Button>
+              <p className="text-[10px] leading-relaxed text-slate-500">
+                Shows which places the camera mixes up, for example in a large open space.
+              </p>
+            </>
           )}
-        </div>
-        <p className="text-[10px] text-slate-500">Tip: copy a screenshot and press Ctrl+V / ⌘V here.</p>
-        <div className="flex gap-2">
-          <Button
-            variant="secondary"
-            size="sm"
-            fullWidth
-            icon={<RotateCcw className="size-4" />}
-            onClick={() => {
-              props.onRotate90(false);
+        </section>
+
+        <section className="flex flex-col gap-2">
+          <h2 className={heading}>Floor plan & data</h2>
+          <input
+            ref={planInput}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={(e) => {
+              pickFile(e, props.onFloorPlanUpload);
             }}
-            title="Turn the whole plan with its locations 90° counter-clockwise"
-          >
-            90°
-          </Button>
-          <Button
-            variant="secondary"
-            size="sm"
-            fullWidth
-            icon={<RotateCw className="size-4" />}
-            onClick={() => {
-              props.onRotate90(true);
-            }}
-            title="Turn the whole plan with its locations 90° clockwise"
-          >
-            90°
-          </Button>
-          {map.floorPlanImage && (
+          />
+          <div className="flex gap-2">
             <Button
               variant="secondary"
               size="sm"
               fullWidth
-              icon={<Scan className="size-4" />}
-              onClick={props.onFitToImage}
-              title="Set the map’s aspect ratio to the floor plan image so it is not stretched"
+              icon={<ImageUp className="size-4" />}
+              onClick={() => planInput.current?.click()}
             >
-              Fit
+              {map.floorPlanImage ? 'Replace floor plan' : 'Upload floor plan'}
             </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              icon={<ClipboardPaste className="size-4" />}
+              onClick={props.onFloorPlanPaste}
+              title="Paste an image from the clipboard (or press Ctrl+V / ⌘V)"
+            >
+              Paste
+            </Button>
+            {map.floorPlanImage && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={props.onFloorPlanRemove}
+                aria-label="Remove floor plan"
+              >
+                <Trash2 className="size-4" />
+              </Button>
+            )}
+          </div>
+          <p className="text-[10px] text-slate-500">Tip: copy a screenshot and press Ctrl+V / ⌘V here.</p>
+          <div className="flex gap-2">
+            <Button
+              variant="secondary"
+              size="sm"
+              fullWidth
+              icon={<RotateCcw className="size-4" />}
+              onClick={() => {
+                props.onRotate90(false);
+              }}
+              title="Turn the whole plan with its locations 90° counter-clockwise"
+            >
+              90°
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              fullWidth
+              icon={<RotateCw className="size-4" />}
+              onClick={() => {
+                props.onRotate90(true);
+              }}
+              title="Turn the whole plan with its locations 90° clockwise"
+            >
+              90°
+            </Button>
+            {map.floorPlanImage && (
+              <Button
+                variant="secondary"
+                size="sm"
+                fullWidth
+                icon={<Scan className="size-4" />}
+                onClick={props.onFitToImage}
+                title="Set the map’s aspect ratio to the floor plan image so it is not stretched"
+              >
+                Fit
+              </Button>
+            )}
+          </div>
+          {map.floorPlanImage && (
+            <label className="flex min-w-0 flex-col gap-1 text-[11px] font-semibold text-slate-600 dark:text-slate-400">
+              <span className="flex justify-between">
+                Straighten image
+                <span className="font-mono tabular-nums">{formatNumber(fineDeg)}°</span>
+              </span>
+              <input
+                type="range"
+                className="accent-brand-600"
+                min={-MAX_FINE_ROTATION_DEG}
+                max={MAX_FINE_ROTATION_DEG}
+                step={0.5}
+                value={fineDeg}
+                onChange={(e) => {
+                  props.onFineRotation(e.target.valueAsNumber);
+                }}
+                onDoubleClick={() => {
+                  props.onFineRotation(0);
+                }}
+              />
+            </label>
           )}
-        </div>
-        {map.floorPlanImage && (
-          <label className="flex min-w-0 flex-col gap-1 text-[11px] font-semibold text-slate-600 dark:text-slate-400">
-            <span className="flex justify-between">
-              Straighten image
-              <span className="font-mono tabular-nums">{formatNumber(fineDeg)}°</span>
-            </span>
-            <input
-              type="range"
-              className="accent-brand-600"
-              min={-MAX_FINE_ROTATION_DEG}
-              max={MAX_FINE_ROTATION_DEG}
-              step={0.5}
-              value={fineDeg}
-              onChange={(e) => {
-                props.onFineRotation(e.target.valueAsNumber);
-              }}
-              onDoubleClick={() => {
-                props.onFineRotation(0);
-              }}
-            />
-          </label>
-        )}
-        <p className="text-[10px] leading-relaxed text-slate-500">
-          90° turns the whole design. “Straighten” rotates only the image under the locations (double-click
-          resets it).
-        </p>
-        <input
-          ref={jsonInput}
-          type="file"
-          accept={MAP_FILE_ACCEPT}
-          className="hidden"
-          onChange={(e) => {
-            pickFile(e, props.onImport);
-          }}
-        />
-        <div className="flex gap-2">
+          <p className="text-[10px] leading-relaxed text-slate-500">
+            90° turns the whole design. “Straighten” rotates only the image under the locations (double-click
+            resets it).
+          </p>
+          <input
+            ref={jsonInput}
+            type="file"
+            accept={MAP_FILE_ACCEPT}
+            className="hidden"
+            onChange={(e) => {
+              pickFile(e, props.onImport);
+            }}
+          />
+          <div className="flex gap-2">
+            <Button
+              variant="dark"
+              size="sm"
+              fullWidth
+              icon={<Download className="size-4" />}
+              onClick={props.onExport}
+            >
+              Export JSON
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              fullWidth
+              icon={<Upload className="size-4" />}
+              onClick={() => jsonInput.current?.click()}
+            >
+              Import as new
+            </Button>
+          </div>
           <Button
-            variant="dark"
+            variant="primary"
             size="sm"
             fullWidth
-            icon={<Download className="size-4" />}
-            onClick={props.onExport}
+            icon={<Share2 className="size-4" />}
+            onClick={props.onShare}
           >
-            Export JSON
+            Share map
           </Button>
-          <Button
-            variant="secondary"
-            size="sm"
-            fullWidth
-            icon={<Upload className="size-4" />}
-            onClick={() => jsonInput.current?.click()}
-          >
-            Import as new
-          </Button>
-        </div>
-        <Button
-          variant="primary"
-          size="sm"
-          fullWidth
-          icon={<Share2 className="size-4" />}
-          onClick={props.onShare}
-        >
-          Share map
-        </Button>
-        <div className="flex gap-2">
-          <Button
-            variant="secondary"
-            size="sm"
-            fullWidth
-            icon={<QrCode className="size-4" />}
-            onClick={props.onSendNearby}
-          >
-            Nearby phone
-          </Button>
-          <Button
-            variant="secondary"
-            size="sm"
-            fullWidth
-            icon={<Link className="size-4" />}
-            onClick={props.onShareLink}
-          >
-            Link & QR
-          </Button>
-        </div>
-        <p className="text-[10px] leading-relaxed text-slate-500">
-          Every option carries the floor plan and all learned views. <b>Share map</b> opens the share sheet
-          (AirDrop, messaging, e-mail). <b>Nearby phone</b> sends the map straight to a phone on the same
-          Wi-Fi by scanning QR codes. <b>Link & QR</b> makes a printable QR code for a map JSON you uploaded
-          somewhere public.
-        </p>
-      </section>
-    </aside>
+          <div className="flex gap-2">
+            <Button
+              variant="secondary"
+              size="sm"
+              fullWidth
+              icon={<QrCode className="size-4" />}
+              onClick={props.onSendNearby}
+            >
+              Nearby phone
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              fullWidth
+              icon={<Link className="size-4" />}
+              onClick={props.onShareLink}
+            >
+              Link & QR
+            </Button>
+          </div>
+          <p className="text-[10px] leading-relaxed text-slate-500">
+            Every option carries the floor plan and all learned views. <b>Share map</b> opens the share sheet
+            (AirDrop, messaging, e-mail). <b>Nearby phone</b> sends the map straight to a phone on the same
+            Wi-Fi by scanning QR codes. <b>Link & QR</b> makes a printable QR code for a map JSON you uploaded
+            somewhere public.
+          </p>
+        </section>
+      </aside>
+      <div
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="Resize sidebar"
+        aria-valuemin={SIDEBAR_MIN}
+        aria-valuemax={SIDEBAR_MAX}
+        aria-valuenow={liveWidth ?? sidebarWidth}
+        tabIndex={0}
+        className={`absolute inset-y-0 -right-1 z-20 hidden w-2 cursor-col-resize touch-none transition-colors outline-none hover:bg-brand-400/40 focus-visible:bg-brand-400/60 md:block ${liveWidth !== null ? 'bg-brand-400/60' : ''}`}
+        onPointerDown={(e) => {
+          e.currentTarget.setPointerCapture(e.pointerId);
+          setLiveWidth(sidebarWidth);
+          document.body.style.userSelect = 'none';
+        }}
+        onPointerMove={(e) => {
+          if (liveWidth === null || !wrapper.current) return;
+          const left = wrapper.current.getBoundingClientRect().left;
+          setLiveWidth(clampSidebarWidth(e.clientX - left, window.innerWidth));
+        }}
+        onPointerUp={endDrag}
+        onPointerCancel={endDrag}
+        onDoubleClick={() => {
+          setSidebarWidth(SIDEBAR_DEFAULT);
+        }}
+        onKeyDown={(e) => {
+          const step = e.key === 'ArrowLeft' ? -16 : e.key === 'ArrowRight' ? 16 : 0;
+          if (!step) return;
+          e.preventDefault();
+          setSidebarWidth(clampSidebarWidth(sidebarWidth + step, window.innerWidth));
+        }}
+      />
+    </div>
   );
 }
 
