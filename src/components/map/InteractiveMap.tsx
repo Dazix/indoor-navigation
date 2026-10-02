@@ -622,12 +622,24 @@ export function InteractiveMap({
               const line = points.map((p) => `${p.x},${p.y}`).join(' ');
               return (
                 <g key={`${edge[0]}-${edge[1]}`} className="group">
+                  {isEditor && (
+                    // White casing so the dashed corridor stays readable over any floor plan.
+                    <polyline
+                      points={line}
+                      fill="none"
+                      stroke="#fff"
+                      strokeWidth={2 * s}
+                      strokeOpacity={0.6}
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  )}
                   <polyline
                     points={line}
                     fill="none"
                     className={
                       isEditor
-                        ? `stroke-slate-400 ${tool === 'delete' ? 'group-hover:stroke-red-500' : ''}`
+                        ? `stroke-slate-500 ${tool === 'delete' ? 'group-hover:stroke-red-500' : ''}`
                         : 'stroke-slate-300 dark:stroke-slate-600'
                     }
                     strokeWidth={(isEditor ? 1.3 : 1) * s}
