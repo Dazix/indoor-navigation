@@ -127,6 +127,29 @@ describe('mapContentHash', () => {
     expect(mapContentHash(reordered)).toBe(mapContentHash(map));
   });
 
+  it('keeps the local cache of other models out of the checksum and the uploaded chunks', () => {
+    const map = makeMap();
+    const cachedNode = map.nodes.a;
+    if (!cachedNode) throw new Error('fixture node missing');
+    const withCache: MapData = {
+      ...map,
+      nodes: {
+        ...map.nodes,
+        a: {
+          ...cachedNode,
+          embeddings: cachedNode.embeddings.map((s) => ({
+            ...s,
+            alt: { 'mobilenet-v2-100': { vector: [0.9, 0.8] } },
+          })),
+        },
+      },
+    };
+    expect(mapContentHash(withCache)).toBe(mapContentHash(map));
+    const docs = mapToCloud(withCache, meta);
+    expect(JSON.stringify(docs.chunks)).not.toContain('mobilenet-v2-100');
+    expect(docs.chunks.map((c) => c.id)).toEqual(mapToCloud(map, meta).chunks.map((c) => c.id));
+  });
+
   it('changes when anything is lost, down to the tiles of one view', () => {
     const withTiles = makeMap();
     const node = withTiles.nodes.a;
@@ -201,6 +224,22 @@ describe('cloudToMap', () => {
     const map = makeMap({ floorPlanImage: dataUrl(CHUNK_CHARS + 100) });
     const result = pull(mapToCloud(map, meta));
     expect(result).toEqual({ ok: true, data: map });
+  });
+
+  it('keeps the local cache of other models across a pull', () => {
+    const framed = (alt?: EmbeddingSample['alt']): MapData => {
+      const map = makeMap();
+      const node = map.nodes.a;
+      if (!node) throw new Error('fixture node missing');
+      map.nodes.a = {
+        ...node,
+        embeddings: [{ ...sample('f1'), frame: 'data:image/jpeg;base64,FF', ...(alt ? { alt } : {}) }],
+      };
+      return map;
+    };
+    const alt: EmbeddingSample['alt'] = { 'mobilenet-v2-100': { vector: [0.9, 0.8] } };
+    const result = pull(mapToCloud(framed(), meta), framed(alt));
+    expect(result).toEqual({ ok: true, data: framed(alt) });
   });
 
   it('keeps the tiles of learned views', () => {

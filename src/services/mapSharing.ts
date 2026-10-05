@@ -1,5 +1,6 @@
 import type { MapData } from '../types/map';
 import { MAX_IMPORT_BYTES, parseMapData, resolveAssetUrl, type ParseResult } from './mapStorage';
+import { stripViewCache } from './modelSwitch';
 
 /** Query parameter that makes the app load a map from a URL on startup. */
 export const MAP_URL_PARAM = 'map';
@@ -68,7 +69,7 @@ export class MapTooLargeError extends Error {
  * Throws `MapTooLargeError` above the import limit, since the receiving side would reject it.
  */
 export async function serializeMap(map: MapData): Promise<{ json: string; fileName: string }> {
-  const complete = await inlineFloorPlan(map);
+  const complete = await inlineFloorPlan(stripViewCache(map));
   const json = JSON.stringify(complete);
   const bytes = new TextEncoder().encode(json).length;
   if (bytes > MAX_IMPORT_BYTES) throw new MapTooLargeError(bytes);

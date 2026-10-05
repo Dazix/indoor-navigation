@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { Edge, MapData, MapNode } from '../../types/map';
 import { parseMapData, type ParseResult } from '../mapStorage';
+import { mergeViewCache, stripNodeCache } from '../modelSwitch';
 
 /** Firestore collection holding maps and their chunk documents (matches the documented security rules). */
 export const CLOUD_COLLECTION = 'indoorMaps';
@@ -174,7 +175,8 @@ function hashParsedMap(map: MapData): string {
       canonical({
         metadata: map.metadata,
         floorPlanImage: map.floorPlanImage,
-        nodes: map.nodes,
+        // The local cache of other models' vectors is not synced, so it must not change the checksum.
+        nodes: Object.fromEntries(Object.entries(map.nodes).map(([id, node]) => [id, stripNodeCache(node)])),
         // Empty bend lists are stored as plain edges in the cloud, so both spell the same edge.
         edges: map.edges.map(([from, to, bends]) => (bends?.length ? [from, to, bends] : [from, to])),
         rooms: map.rooms,
@@ -241,7 +243,11 @@ function groupTexts(map: MapData): Map<string, GroupText> {
   const groups = new Map<string, GroupText>();
   for (const [id, node] of Object.entries(map.nodes)) {
     if (node.embeddings.length > 0) {
-      groups.set(embeddingGroup(id), { part: 'emb', nodeId: id, text: JSON.stringify(node.embeddings) });
+      groups.set(embeddingGroup(id), {
+        part: 'emb',
+        nodeId: id,
+        text: JSON.stringify(stripNodeCache(node).embeddings),
+      });
     }
   }
   if (map.floorPlanImage?.startsWith('data:')) {
@@ -394,7 +400,7 @@ export function cloudToMap(
           'This app version cannot read the whole cloud map and would lose part of it. Reload the app to update it, then try again.',
       };
     }
-    return parsed;
+    return parsed.ok ? { ok: true, data: mergeViewCache(parsed.data, local) } : parsed;
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : 'The cloud map could not be read' };
   }
