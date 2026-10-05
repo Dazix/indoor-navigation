@@ -1,3 +1,4 @@
+import type { EmbeddingModelId } from '../services/embeddingModels';
 import type { MapNode } from './map';
 
 /** One learned viewpoint of a place: a compact feature vector plus a small preview image. */
@@ -23,6 +24,18 @@ export interface EmbeddingSample {
    * rooms that are mirror images of each other (window left vs. right of the TV) can be told apart.
    * Missing in older maps; such views are compared on the whole frame only.
    */
+  tiles?: number[][];
+  /**
+   * Vectors of the same `frame` computed by the other models, keyed by model id. `vector` and `tiles`
+   * always belong to the map's active model; switching models swaps them with this cache so nothing
+   * is embedded twice. Local only: it is left out of exports, share links and cloud sync.
+   */
+  alt?: Partial<Record<EmbeddingModelId, ViewVectors>>;
+}
+
+/** The vectors a model computed for one view. */
+export interface ViewVectors {
+  vector: number[];
   tiles?: number[][];
 }
 

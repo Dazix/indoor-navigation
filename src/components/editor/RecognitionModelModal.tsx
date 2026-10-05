@@ -21,7 +21,8 @@ interface RecognitionModelModalProps {
 
 /**
  * Chooses the model that turns camera frames into vectors for this map. A learned view keeps the frame
- * it was computed from, so switching recomputes the vectors on this device without scanning again.
+ * it was computed from, so switching recomputes the vectors on this device without scanning again. The
+ * vectors of the model left behind stay saved with the view, so switching back costs nothing.
  */
 export default function RecognitionModelModal({ map, onClose, onApply }: RecognitionModelModalProps) {
   const current = resolveEmbeddingModel(map.metadata.embeddingModel).id;
@@ -37,7 +38,8 @@ export default function RecognitionModelModal({ map, onClose, onApply }: Recogni
     };
   }, []);
 
-  const plan = planModelSwitch(map.nodes);
+  const plan = planModelSwitch(map.nodes, chosen);
+  const toCompute = plan.recomputable - plan.cached;
   const working = progress !== null;
   const changed = chosen !== current;
 
@@ -45,9 +47,12 @@ export default function RecognitionModelModal({ map, onClose, onApply }: Recogni
     setError(null);
     setProgress(0);
     try {
-      if (!(await loadMobileNet(chosen)))
+      // With every view cached the model is not needed at all, so skip its download.
+      if (toCompute > 0 && !(await loadMobileNet(chosen)))
         throw new Error('The model could not be loaded. Check the connection.');
       const views = await recomputeViews(map.nodes, embedStoredFrame, {
+        from: current,
+        to: chosen,
         onProgress: setProgress,
         isCancelled: () => cancelled.current,
       });
@@ -99,8 +104,9 @@ export default function RecognitionModelModal({ map, onClose, onApply }: Recogni
 
         {changed && plan.recomputable + plan.removed > 0 && (
           <p className="rounded-xl bg-slate-100 p-3 text-xs text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-            {plan.recomputable} view{plan.recomputable === 1 ? '' : 's'} will be recomputed from the stored
-            frames on this device.
+            {toCompute} view{toCompute === 1 ? '' : 's'} will be recomputed from the stored frames on this
+            device
+            {plan.cached > 0 && `; ${plan.cached} already have vectors of this model saved and are reused`}.
             {plan.removed > 0 && (
               <b className="text-red-600">
                 {' '}

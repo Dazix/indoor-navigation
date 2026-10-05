@@ -39,6 +39,29 @@ describe('map sharing', () => {
     expect(fileName).toMatch(/^small-.*\.json$/);
   });
 
+  it('leaves the local cache of other models out of the file', async () => {
+    const map = createBlankMap('Cached');
+    map.nodes.a = {
+      id: 'a',
+      x: 1,
+      y: 1,
+      label: 'A',
+      markerCode: '',
+      embeddings: [
+        {
+          id: 'v1',
+          thumbnail: 'data:image/jpeg;base64,AA',
+          vector: [1],
+          timestamp: 1,
+          alt: { 'mobilenet-v2-100': { vector: [2] } },
+        },
+      ],
+    };
+    const { json } = await serializeMap(map);
+    expect(json).not.toContain('mobilenet-v2-100');
+    expect(json).toContain('"vector":[1]');
+  });
+
   it('offers a .txt copy for share sheets that refuse JSON (Chrome on Android)', () => {
     const [json, txt] = shareCandidates('{}', 'office-2026-09-25.json');
     expect([json?.name, json?.type]).toEqual(['office-2026-09-25.json', 'application/json']);
