@@ -11,11 +11,18 @@ import {
   isTrained,
   meanEmbedding,
   meanTileEmbeddings,
-  pickAutoMatch,
   rankMatches,
 } from '../../services/visionMatcher';
 import { resolveEmbeddingModel } from '../../services/embeddingModels';
-import { pushFrame, smoothMatches } from '../../services/scoreSmoothing';
+import {
+  AUTO_CONFIDENT,
+  buildFilterModel,
+  initialBelief,
+  pickConfidentMatch,
+  predictBelief,
+  rankBelief,
+  updateBelief,
+} from '../../services/positionFilter';
 import { proximityBoosts, type LocationFix, type WalkEstimate } from '../../services/locationPrior';
 import type { MapData } from '../../types/map';
 import type { MatchResult } from '../../types/vision';
@@ -38,14 +45,11 @@ interface VisionScannerModalProps {
 type Tab = 'visual' | 'code';
 
 const SCAN_INTERVAL_MS = 700;
-const MIN_SCORE = 30;
-/** The ranking is averaged over this many latest frames; nothing is confirmed before the window is full. */
-const SMOOTH_FRAMES = 3;
-/** Places kept per frame before averaging, so a place just outside the top list is not counted as 0. */
-const FRAME_CANDIDATES = 8;
+/** Frames the position filter has seen before it may warn that several places look alike. */
+const MIN_FRAMES = 3;
 const RESULT_COUNT = 4;
-/** On how many consecutive frames the smoothed score must pass `AUTO_MATCH` for automatic relocalization. */
-const AUTO_FRAMES = 1;
+/** On how many consecutive frames the same place must pass `AUTO_CONFIDENT` for automatic relocalization. */
+const AUTO_FRAMES = 2;
 
 /** Camera-based relocalization: markerless (MobileNet embeddings) or QR / barcode markers. */
 export default function VisionScannerModal({
@@ -83,6 +87,14 @@ export default function VisionScannerModal({
   // Removing what all views of the map share lets places in a uniform room be told apart.
   const center = useMemo(() => meanEmbedding(map.nodes), [map.nodes]);
   const tileCenters = useMemo(() => meanTileEmbeddings(map.nodes), [map.nodes]);
+  const filterModel = useMemo(
+    () =>
+      buildFilterModel(
+        map,
+        trainedNodes.map((n) => n.id),
+      ),
+    [map, trainedNodes],
+  );
 
   // Latest values for the scan loop, which must not restart on every render.
   const latest = useRef({
@@ -94,11 +106,24 @@ export default function VisionScannerModal({
     lastFix,
     center,
     tileCenters,
+    filterModel,
     heading,
     walk,
   });
   useEffect(() => {
-    latest.current = { map, onDetected, onClose, tab, embed, lastFix, center, tileCenters, heading, walk };
+    latest.current = {
+      map,
+      onDetected,
+      onClose,
+      tab,
+      embed,
+      lastFix,
+      center,
+      tileCenters,
+      filterModel,
+      heading,
+      walk,
+    };
   });
 
   const detectedRef = useRef(false);
@@ -128,7 +153,11 @@ export default function VisionScannerModal({
       : null;
     let busy = false;
     let streak: { id: string; frames: number } | null = null;
-    let history: MatchResult[][] = [];
+    // Position filter state: the belief per trained place, rebuilt when the places change.
+    let filter: { model: ReturnType<typeof buildFilterModel>; belief: number[]; frames: number } | null =
+      null;
+    // Walked distance since the fix at the previous frame; null without a step counter.
+    let lastWalkedM: number | null = null;
 
     const timer = setInterval(() => {
       const video = videoRef.current;
@@ -141,6 +170,7 @@ export default function VisionScannerModal({
         lastFix: fix,
         center: mean,
         tileCenters: tileMeans,
+        filterModel: model,
         heading: liveHeading,
         walk: liveWalk,
       } = latest.current;
@@ -149,21 +179,37 @@ export default function VisionScannerModal({
         if (currentTab === 'visual') {
           const { vector, tiles } = await embed(video);
           const frame = rankMatches(vector, currentMap.nodes, {
-            minScore: MIN_SCORE,
-            limit: FRAME_CANDIDATES,
-            boosts: proximityBoosts(currentMap, fix, Date.now(), liveWalk),
             center: mean,
             tiles,
             tileCenters: tileMeans,
             heading: liveHeading,
           });
-          // One frame of a uniform room can jump to a look-alike place; judge the last few together.
-          history = pushFrame(history, frame, SMOOTH_FRAMES);
-          const ranked = smoothMatches(history, RESULT_COUNT);
+          // One frame of a uniform room can jump to a look-alike place, so the frames are not judged
+          // one by one: the filter accumulates their evidence and moves it along with the walk.
+          const walkedM = liveWalk?.distanceM ?? null;
+          const similarities = model.ids.map(
+            (id) => (frame.find((result) => result.node.id === id)?.score ?? 0) / 100,
+          );
+          if (filter?.model !== model) {
+            filter = {
+              model,
+              belief: initialBelief(model, proximityBoosts(currentMap, fix, Date.now(), liveWalk)),
+              frames: 0,
+            };
+          } else {
+            // The step count restarts at every fix, so a drop means a new leg, not walking backwards.
+            const stepM =
+              walkedM !== null && lastWalkedM !== null ? Math.max(0, walkedM - lastWalkedM) : null;
+            filter.belief = predictBelief(model, filter.belief, stepM);
+          }
+          lastWalkedM = walkedM;
+          filter.belief = updateBelief(filter.belief, similarities);
+          filter.frames++;
+          const ranked = rankBelief(model, filter.belief, currentMap.nodes, frame, RESULT_COUNT);
           setResults(ranked);
-          const top = history.length < SMOOTH_FRAMES ? null : pickAutoMatch(ranked, AUTO_MATCH);
+          const top = filter.frames < MIN_FRAMES ? null : pickConfidentMatch(ranked, AUTO_CONFIDENT);
           // Strong match that similar-looking places compete with: let the user choose.
-          setAmbiguous(!top && (ranked[0]?.score ?? 0) >= AUTO_MATCH.minScore);
+          setAmbiguous(!top && filter.frames >= MIN_FRAMES && (ranked[0]?.score ?? 0) >= AUTO_MATCH.minScore);
           if (top) {
             streak =
               streak?.id === top.node.id

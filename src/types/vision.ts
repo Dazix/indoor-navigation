@@ -46,6 +46,8 @@ export interface MatchResult {
   thumbnail: string | null;
   /** Ranking bonus in percent points from the location prior; `score` stays the raw similarity. */
   boost?: number;
+  /** Belief 0–1 of the position filter that the user is at this place (see `positionFilter.ts`). */
+  confidence?: number;
 }
 
 export type EmbeddingEngine = 'mobilenet' | 'fallback';

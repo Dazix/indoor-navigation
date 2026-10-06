@@ -17,7 +17,7 @@ export const BOOST_RADIUS_M = 15;
 export const BOOST_MAX_AGE_MS = 5 * 60_000;
 
 /** Walking distance in map units from `startId` to every reachable node (Dijkstra). */
-function graphDistances(map: MapData, startId: string): Map<string, number> {
+export function graphDistances(map: MapData, startId: string): Map<string, number> {
   const graph = buildGraph(map.nodes, map.edges);
   const dist = new Map<string, number>([[startId, 0]]);
   const open = new Set<string>([startId]);
@@ -68,7 +68,7 @@ function bell(error: number, sigma: number): number {
  * Places around that distance are likeliest; nearer ones stay possible, since the user may have
  * looped back, and farther ones fade with the drift.
  */
-function ringLikelihood(graphM: number, walkedM: number, sigma: number): number {
+export function ringLikelihood(graphM: number, walkedM: number, sigma: number): number {
   if (graphM > walkedM) return bell(graphM - walkedM, sigma);
   return walkedM === 0 ? 1 : 0.5 + 0.5 * (graphM / walkedM);
 }
