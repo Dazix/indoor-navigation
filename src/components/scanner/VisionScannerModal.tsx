@@ -14,6 +14,7 @@ import {
   rankMatches,
 } from '../../services/visionMatcher';
 import { resolveEmbeddingModel } from '../../services/embeddingModels';
+import { rankProjected, trainLda } from '../../services/ldaProjection';
 import {
   AUTO_CONFIDENT,
   buildFilterModel,
@@ -87,6 +88,8 @@ export default function VisionScannerModal({
   // Removing what all views of the map share lets places in a uniform room be told apart.
   const center = useMemo(() => meanEmbedding(map.nodes), [map.nodes]);
   const tileCenters = useMemo(() => meanTileEmbeddings(map.nodes), [map.nodes]);
+  // Projection that keeps what tells the places apart; null when the views do not allow training one.
+  const lda = useMemo(() => trainLda(map.nodes), [map.nodes]);
   const filterModel = useMemo(
     () =>
       buildFilterModel(
@@ -106,6 +109,7 @@ export default function VisionScannerModal({
     lastFix,
     center,
     tileCenters,
+    lda,
     filterModel,
     heading,
     walk,
@@ -120,6 +124,7 @@ export default function VisionScannerModal({
       lastFix,
       center,
       tileCenters,
+      lda,
       filterModel,
       heading,
       walk,
@@ -170,6 +175,7 @@ export default function VisionScannerModal({
         lastFix: fix,
         center: mean,
         tileCenters: tileMeans,
+        lda: projection,
         filterModel: model,
         heading: liveHeading,
         walk: liveWalk,
@@ -178,12 +184,14 @@ export default function VisionScannerModal({
       const scan = async () => {
         if (currentTab === 'visual') {
           const { vector, tiles } = await embed(video);
-          const frame = rankMatches(vector, currentMap.nodes, {
-            center: mean,
-            tiles,
-            tileCenters: tileMeans,
-            heading: liveHeading,
-          });
+          const frame =
+            (projection && rankProjected(projection, vector, tiles, currentMap.nodes, liveHeading)) ||
+            rankMatches(vector, currentMap.nodes, {
+              center: mean,
+              tiles,
+              tileCenters: tileMeans,
+              heading: liveHeading,
+            });
           // One frame of a uniform room can jump to a look-alike place, so the frames are not judged
           // one by one: the filter accumulates their evidence and moves it along with the walk.
           const walkedM = liveWalk?.distanceM ?? null;
