@@ -94,6 +94,17 @@ describe('trainLda', () => {
     expect(trainLda(nodes)).toBeNull();
   });
 
+  it('is not trained on vectors too big to factor quickly', () => {
+    const huge = (id: string) =>
+      node(
+        id,
+        Array.from({ length: 2 }, () =>
+          sample({ vector: new Array<number>(2000).fill(1), tiles: [[1], [1]] }),
+        ),
+      );
+    expect(trainLda({ a: huge('a'), b: huge('b') })).toBeNull();
+  });
+
   it('copes with a place that has a single view', () => {
     const nodes = trainingMap(3, 8);
     nodes.p2 = node('p2', [sample(view(2, rng(5)))]);

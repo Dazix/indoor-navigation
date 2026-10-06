@@ -12,6 +12,9 @@ import { centeredCosineSimilarity, headingFactor, TILE_COUNT } from './visionMat
 
 /** Variance added to the diagonal so a degenerate covariance can still be factored. */
 const RIDGE = 1e-8;
+/** Imported maps are untrusted: bigger vectors or more places than this are not trained on (cost grows with the cube of the size). */
+const MAX_DIMENSIONS = 1024;
+const MAX_PLACES = 200;
 /** Directions whose discriminant ratio is below this share of the best one are noise. */
 const MIN_EIGENVALUE_SHARE = 1e-6;
 
@@ -200,7 +203,8 @@ export function trainLda(nodes: Record<string, MapNode>): LdaModel | null {
     classes.push({ node, views });
   }
   const total = classes.reduce((sum, c) => sum + c.views.length, 0);
-  if (classes.length < 2 || classes.every((c) => c.views.length < 2)) return null;
+  if (classes.length < 2 || classes.length > MAX_PLACES || dims > MAX_DIMENSIONS) return null;
+  if (classes.every((c) => c.views.length < 2)) return null;
 
   const mean = new Array<number>(dims).fill(0);
   for (const c of classes)
